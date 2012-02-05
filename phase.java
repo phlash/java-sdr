@@ -69,4 +69,8 @@ public class phase extends JPanel implements jsdr.JsdrTab {
 		max = Math.max(max*2,1);
 		repaint();
 	}
+
+	public void hotKey(char c) {
+		;
+	}
 }

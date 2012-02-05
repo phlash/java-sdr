@@ -44,6 +44,7 @@ public class jsdr implements Runnable {
 	protected JFrame frame;
 	protected JLabel status;
 	protected JLabel scanner;
+	protected JLabel hotkeys;
 	protected JTabbedPane tabs;
 	protected int ic, qc;
 	private AudioFormat format;
@@ -70,6 +71,13 @@ public class jsdr implements Runnable {
 		} catch (Exception e) {
 		}
 		return def;
+	}
+
+	public void regHotKey(char c, String desc) {
+		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
+				KeyStroke.getKeyStroke(c), "Key");
+		if (desc!=null)
+			hotkeys.setText(hotkeys.getText() + c+ ' ' + desc + "<br/>");
 	}
 
 	@SuppressWarnings("serial")
@@ -99,9 +107,6 @@ public class jsdr implements Runnable {
 		// The tabbed display panes (in top)
 		tabs = new JTabbedPane(JTabbedPane.BOTTOM);
 		split.setTopComponent(tabs);
-		// The content in each tab
-		tabs.add("Spectrum", new fft(this, format, bufsize));
-		tabs.add("Phase", new phase(this, format, bufsize));
 		// The control area (in bottom)
 		JPanel controls = new JPanel();
 		split.setBottomComponent(controls);
@@ -139,6 +144,13 @@ public class jsdr implements Runnable {
 						f = freq;
 						lastMax = -1;
 					}
+				} else {
+					for (int t=0; t<tabs.getTabCount(); t++) {
+						Object o = tabs.getComponentAt(t);
+						if (o instanceof JsdrTab) {
+							((JsdrTab)o).hotKey(c);
+						}
+					}
 				}
 				if (f>=50000) {
 					fcdSetFreq(f);
@@ -146,39 +158,27 @@ public class jsdr implements Runnable {
 				saveConfig();
 			}
 		};
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('f'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('i'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('q'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('I'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('Q'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('u'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('d'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('U'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('D'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('s'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('S'), "Key");
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-			KeyStroke.getKeyStroke('@'), "Key");
+		hotkeys = new JLabel(
+			"<html><b>Hotkeys</b><br/>"+
+			"i/I and q/Q adjust DC offsets (up/Down)<br/>" +
+			"u/U tune up by 1/10kHz, d/D tune down by 1/10kHz<br/>" +
+			"s/S step up/down by 50kHz<br/>" +
+			"f enter frequency, @ start/stop scan<br/>"
+		);
+		regHotKey('f', null);
+		regHotKey('i', null);
+		regHotKey('I', null);
+		regHotKey('q', null);
+		regHotKey('Q', null);
+		regHotKey('u', null);
+		regHotKey('U', null);
+		regHotKey('d', null);
+		regHotKey('D', null);
+		regHotKey('s', null);
+		regHotKey('S', null);
+		regHotKey('@', null);
 		frame.getLayeredPane().getActionMap().put("Key", act);
-		controls.add(new JLabel(
-				"<html><b>Hotkeys</b><br/>"+
-				"i/I and q/Q adjust DC offsets (up/Down)<br/>" +
-				"u/U tune up by 1/10kHz, d/D tune down by 1/10kHz<br/>" +
-				"s/S step up/down by 50kHz<br/>" +
-				"f enter frequency, @ start/stop scan" +
-				"</html>"
-				), BorderLayout.CENTER);
+		controls.add(hotkeys, BorderLayout.CENTER);
 
 		// status bar
 		status = new JLabel(frame.getTitle());
@@ -192,6 +192,10 @@ public class jsdr implements Runnable {
 				System.exit(0);
 			}
 		});
+		// The content in each tab
+		tabs.add("Spectrum", new fft(this, format, bufsize));
+		tabs.add("Phase", new phase(this, format, bufsize));
+		hotkeys.setText(hotkeys.getText()+"</html>");
 		// Done - show it!
 		frame.setVisible(true);
 		// Start audio thread
@@ -286,6 +290,10 @@ public class jsdr implements Runnable {
 				line.open(format, bufsize);
 				line.start();
 				while (!done) {
+					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
+						buf.clear();
+						line.read(tmp, 0,tmp.length);
+					}
 					buf.clear();
 					line.read(tmp, 0, tmp.length);
 					buf.put(tmp);
@@ -316,11 +324,11 @@ public class jsdr implements Runnable {
 	}
 
 	// Callback used by fft module to pass up maxima from each buffer
-	public void spectralMaxima(float max, int pos) {
+	public void spectralMaxima(float max, int foff) {
 		// If scanning, save maxima against freq..
 		if (fscan!=null) {
 			try {
-				String s = "" + System.currentTimeMillis()/1000 + "," + lastfreq + "," + max + "\n";
+				String s = "" + System.currentTimeMillis()/1000 + "," + lastfreq + ","+ foff + "," + max + "\n";
 				FileOutputStream fs = new FileOutputStream(fscan, true);
 				fs.write(s.getBytes());
 				fs.close();
@@ -329,7 +337,7 @@ public class jsdr implements Runnable {
 				status.setText("Scan aborted, cannot write log");
 			}
 			if (max>lastMax) {
-				scanner.setText("Last maxima: freq: " + freq + " max: " + max);
+				scanner.setText("Last maxima: freq: " + lastfreq + " max: " + max);
 				lastMax = max;
 				saveConfig();
 			}
@@ -370,5 +378,6 @@ public class jsdr implements Runnable {
 	// Interface implemented by tabbed display components
 	public interface JsdrTab {
 		public void newBuffer(ByteBuffer buf);
+		public void hotKey(char c);
 	}
 }

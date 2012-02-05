@@ -13,6 +13,9 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 	private jsdr parent;
 	private float[] dat;
 	private float[] spc;
+	private float[] win;
+	private boolean dow = true;
+	private boolean log = true;
 	private AudioFormat fmt;
 
 	public fft(jsdr p, AudioFormat af, int bufsize) {
@@ -21,7 +24,14 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		int sbytes = (af.getSampleSizeInBits()+7)/8;
 		dat = new float[bufsize/sbytes/af.getChannels()*2];
 		spc = new float[dat.length+1];	// add one for spectal maxima
+		win = new float[dat.length/2];
+		// Calculate window coefficients (hamming)
+		for (int s=0; s<win.length; s++)
+			win[s] = (float) (0.54 - 0.46*Math.cos(2*Math.PI*s/win.length));
 		fmt = af;
+		// Reg hot keys
+		p.regHotKey('w', "Toggle Hamming window");
+		p.regHotKey('l', "Toggle log scale");
 	}
 
 	protected void paintComponent(Graphics g) {
@@ -47,7 +57,10 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		// Step size for resampling to screen size
 		float s = (float)(dat.length/2)/(float)getWidth();
 		int t = (int)Math.ceil(s);
-		g.drawString("step: "+s, 2, 24);
+		if (dow)
+			g.drawString("step(win): "+s, 2, 24);
+		else
+			g.drawString("step(raw): "+s, 2, 24);
 		// Scale factor to fit -1 to 1 float sample data into 1/3 screen height
 		float h = (float)(getHeight()/6);
 		// Offset down screen
@@ -71,11 +84,14 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			g.drawLine(p, ly+o, p+1, y+o);
 			ly = y;
 		}
-		// PSD in lower 1/3rd
+		// PSD in lower 1/3rd (log scale if selected)
 		g.setColor(Color.GREEN);
-		g.drawString("PSD: "+spc[spc.length-1], 2, getHeight()*2/3+12);
+		if (log)
+			g.drawString("PSD(log): "+Math.log10(spc[spc.length-1]), 2, getHeight()*2/3+12);
+		else
+			g.drawString("PSD(raw): "+spc[spc.length-1], 2, getHeight()*2/3+12);
 		o = getHeight();
-		h = (getHeight()/3)/spc[spc.length-1];
+		h = log ? (getHeight()/3)/(float)Math.log10(spc[spc.length-1]) : (getHeight()/3)/spc[spc.length-1];
 		ly = 0;
 		int off = getWidth()/2;
 		// adjust scale and offset if only single channel data
@@ -86,7 +102,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		for (int p=0; p<getWidth()-1; p++) {
 			// offset and wrap index to display negative freqs, then positives..
 			int i = (p+off) % getWidth();
-			int y = (int)(getMax(spc, 2*(int)(i*s), t)*h);
+			int y = log ? (int)(Math.log10(getMax(spc, 2*(int)(i*s), t))*h) : (int)(getMax(spc, 2*(int)(i*s), t)*h);
 			g.drawLine(p, o-ly, p+1, o-y);
 			ly = y;
 //					if (2*(int)(p*s)<=spos && spos<=2*(int)((p+1)*s)) {
@@ -105,12 +121,12 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 	}
 
 	public void newBuffer(ByteBuffer buf) {
-		// Convert to array of floats (scaled -1 to 1)..
+		// Convert to array of floats (scaled -1 to 1).. and apply windowing function if required
 		int div = 2<<(fmt.getSampleSizeInBits()-1);
 		for (int s=0; s<dat.length; s+=2) {
-			dat[s]   = (float)(buf.getShort()+parent.ic) / (float)div;
+			dat[s] = ((float)(buf.getShort()+parent.ic) / (float)div) * (dow ? win[s/2] : 1);
 			if (fmt.getChannels()>1)
-				dat[s+1] = (float)(buf.getShort()+parent.qc) / (float)div;
+				dat[s+1] = ((float)(buf.getShort()+parent.qc) / (float)div) * (dow ? win[s/2] : 1);
 			else
 				dat[s+1] = 0;
 		}
@@ -132,9 +148,20 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		// Stash maxima for scaling display
 		spc[spc.length-1] = m;
 		// Upcall for scanner
+		if (fmt.getChannels()<2)		// convert array index to frequency offset
+			p = (p*(int)fmt.getSampleRate())/(2*dat.length);
+		else
+			p = (p*(int)fmt.getSampleRate())/dat.length - (int)fmt.getSampleRate()/2;
 		parent.spectralMaxima(m, p);
 		// Skip redraw unless we are visible
 		if (isVisible())
 			repaint();
+	}
+
+	public void hotKey(char c) {
+		if ('w'==c)
+			dow = !dow;
+		if ('l'==c)
+			log = !log;
 	}
 }
