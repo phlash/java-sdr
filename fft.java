@@ -30,7 +30,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			win[s] = (float) (0.54 - 0.46*Math.cos(2*Math.PI*s/win.length));
 		fmt = af;
 		// Reg hot keys
-		p.regHotKey('w', "Toggle Hamming window");
+		p.regHotKey('h', "Toggle Hamming window");
 		p.regHotKey('l', "Toggle log scale");
 	}
 
@@ -159,7 +159,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 	}
 
 	public void hotKey(char c) {
-		if ('w'==c)
+		if ('h'==c)
 			dow = !dow;
 		if ('l'==c)
 			log = !log;

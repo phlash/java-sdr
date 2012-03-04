@@ -195,6 +195,7 @@ public class jsdr implements Runnable {
 		// The content in each tab
 		tabs.add("Spectrum", new fft(this, format, bufsize));
 		tabs.add("Phase", new phase(this, format, bufsize));
+		tabs.add("Demodulator", new demod(this, format, bufsize));
 		hotkeys.setText(hotkeys.getText()+"</html>");
 		// Done - show it!
 		frame.setVisible(true);

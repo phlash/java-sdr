@@ -4,7 +4,7 @@ JTRANS=$(PWD)/../JTransforms/jtransforms-2.3.jar
 FCDAPI=$(PWD)/../qthid/bin/fcdapi.jar
 JNALIB=/usr/share/java/jna.jar
 
-CLASSES=bin/jsdr.class bin/phase.class bin/fft.class
+CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class
 CLASSPATH=$(FCDAPI):$(JTRANS):$(JNALIB)
 
 all: bin/jsdr.jar
