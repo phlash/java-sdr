@@ -9,6 +9,7 @@ import javax.sound.sampled.SourceDataLine;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Properties;
 
 import java.awt.GridLayout;
 import java.awt.Graphics;
@@ -22,16 +23,18 @@ import javax.swing.ButtonGroup;
 import javax.swing.JComboBox;
 
 @SuppressWarnings("serial")
-public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
+public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runnable {
 
 	private jsdr parent;
 	private AudioFormat fmt, aud;
+	private Thread thr;
 	private int[] sam;
 	private boolean dofir;
 	private int flo, fhi;
 	private int[] fir;
 	private int fof;
 	private double[] wfir;
+	private int[] mod = {0, 0};
 	private ByteBuffer bbf;
 	private int max, li, lq;
 	private JRadioButton off, am, fm;
@@ -53,7 +56,7 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 		// weights for FIR filter
 		wfir = new double[21];
 		// generate default filter as all-pass
-		weights(Integer.MIN_VALUE, Integer.MIN_VALUE);
+		weights(Integer.MIN_VALUE);
 		// processing buffer for demodulation
 		int sbytes = (af.getSampleSizeInBits()+7)/8;
 		sam = new int[bufsize/sbytes/af.getChannels()*2];
@@ -94,10 +97,15 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 		}
 		// nothing going out yet..
 		this.out = null;
+		// audio output thread
+		this.thr = new Thread(this);
+		this.thr.start();
 		// register keys for filter switching
 		this.dofir = false;
-		this.flo = -1000;
-		this.fhi = +1000;
+		this.flo = 0;
+		this.fhi = +10000;
+		this.mod[0] = -(this.flo+this.fhi)/2;
+		this.mod[1] = 0;
 		p.regHotKey('b', "Toggle Bandpass filter");
 		p.regHotKey('n', "Narrow filter");
 		p.regHotKey('w', "Widen filter");
@@ -116,24 +124,21 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 
 	// generate FIR filter weights according to:
 	// http://www.labbookpages.co.uk/audio/firWindowing.html
-	private void weights(int f1, int f2) {
+	private void weights(int fcut) {
 		// all-pass?
-		if (Integer.MIN_VALUE==f1 && Integer.MIN_VALUE==f2) {
+		if (Integer.MIN_VALUE==fcut) {
 			for (int i=0; i<wfir.length; i++)
 				wfir[i]=0;
 			wfir[(wfir.length-1)/2]=1;
-		// TODO: band-pass
+		// low-pass
 		} else {
-			double df1 = (double)f1/fmt.getSampleRate();
-			double df2 = (double)f2/fmt.getSampleRate();
+			double dfc = (double)fcut/fmt.getSampleRate();
 			int ord = wfir.length-1;
 			for (int n=0; n<wfir.length; n++) {
 				if (n==ord/2) {
-					wfir[n]=2*(df2-df1);
+					wfir[n]=2*dfc;
 				} else {
-					wfir[n]
-						= (Math.sin(2*Math.PI*df2*(n-ord/2))/(Math.PI*(n-ord/2)))
-						- (Math.sin(2*Math.PI*df1*(n-ord/2))/(Math.PI*(n-ord/2)));
+					wfir[n]=(Math.sin(2*Math.PI*dfc*(n-ord/2))/(Math.PI*(n-ord/2)));
 				}
 			}
 		}
@@ -144,10 +149,10 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 	}
 
 	// Apply FIR filter to incoming sample stream
-	private void filter(int in[], int off, int out[]) {
+	private void filter(int in[], int out[]) {
 		// put the current sample at start of delay buffer
-		fir[fof]=in[off];
-		fir[fof+1]=in[off+1];
+		fir[fof]=in[0];
+		fir[fof+1]=in[1];
 		// weight and sum output I/Q
 		double oi=0;
 		double oq=0;
@@ -163,34 +168,24 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 		if (fof<0) fof=fir.length-2;
 	}
 
+	// Modulate one complex sample with another
+	private void complex_mod(int[] sig1, int[] sig2, int[] out) {
+		// (a+ib).(c+id) = ((ac-bd)+i(ad+bc))
+		out[0]=sig1[0]*sig2[0]-sig1[1]*sig2[1];
+		out[1]=sig1[0]*sig2[1]+sig1[1]*sig2[0];
+	}
+
+	// Generate continuous complex carrier samples at specified frequency
+	private void complex_gen(int[] sig, int[] wav) {
+		double w = (2*Math.PI*wav[0]*wav[1])/fmt.getSampleRate();
+		sig[0]=(int)(Math.cos(w)*8192);
+		sig[1]=(int)(Math.sin(w)*8192);
+		wav[1]+=1;
+		if (wav[1]>=(int)fmt.getSampleRate())
+			wav[1]=0;
+	}
+
 	public void newBuffer(ByteBuffer buf) {
-		// Close output audio stream when disabled
-		if (off.isSelected()) {
-			if (out!=null) {
-				out.close();
-				out=null;
-			}
-			dbg.setText("Audio not selected");
-			return;
-		}
-		// Open output audio stream if not already done
-		if (out==null) {
-			Mixer.Info mi = mix.get(sel.getSelectedIndex());
-			try {
-				out = AudioSystem.getSourceDataLine(aud, mi);
-				if (out!=null) {
-					out.open(aud);
-					out.start();
-				}
-			} catch (Exception e) {
-				out = null;
-				dbg.setText("Failed to open audio: " + mi);
-				return;
-			}
-			// initialise FM demod
-			li = 0;
-			lq = 0;
-		}
 		// AM demodulator:
 		//   determine AGC factor while measuring input amplitude and averaging it
 		//   subtract average from each amplitude , scale for AGC and output in mono
@@ -207,8 +202,12 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 				sam[s+1] = 0;
 			// band-pass filter?
 			if (dofir) {
-				int[] fs = { 0, 0 };
-				filter(sam, s, fs);
+				int[] sh = { 0, 0 };
+				complex_gen(sh, mod);
+				int[] fs = { sam[s], sam[s+1] };
+				int[] os = { 0, 0 };
+				complex_mod(fs, sh, os);
+				filter(os, fs);
 				sam[s]=fs[0];
 				sam[s+1]=fs[1];
 			}
@@ -232,7 +231,7 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 			avg = avg/(sam.length/2);
 			max -= avg;
 		}
-		dbg.setText("Demod: max="+max+", avg="+avg);
+		//dbg.setText("Demod: max="+max+", avg="+avg);
 		// Write audio buffer, apply AGC
 		bbf.clear();
 		for (int s=0; s<sam.length; s+=2) {
@@ -243,14 +242,17 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 			// right
 			bbf.putShort(v);
 		}
-		out.write(bbf.array(), 0, bbf.array().length);
 		repaint();
 	}
 
 	public void hotKey(char c) {
 		if ('b'==c) {
 			dofir = !dofir;
-		} else if ('n'==c) {
+			if (dofir) {
+				weights(this.fhi-this.flo);
+				this.mod[0]=-(this.fhi-this.flo)/2;
+			}
+		}/* else if ('n'==c) {
 			flo = -1000;
 			fhi = +1000;
 		} else if ('w'==c) {
@@ -259,7 +261,39 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 		} else if ('a'==c) {
 			flo = fhi = Integer.MIN_VALUE;
 		}
-		weights(flo, fhi);
+		weights(flo, fhi);*/
+	}
+
+	public void run() {
+		while (thr!=null) {
+			if (off.isSelected()) {
+				if (out!=null) {
+					out.close();
+					out=null;
+				}
+				dbg.setText("Audio not selected");
+			} else if (out==null) {
+				Mixer.Info mi = mix.get(sel.getSelectedIndex());
+				try {
+					out = AudioSystem.getSourceDataLine(aud, mi);
+					if (out!=null) {
+						out.open(aud);
+						out.start();
+						dbg.setText("Audio started");
+					}
+				} catch (Exception e) {
+					out = null;
+					dbg.setText("Failed to open audio: " + mi);
+					return;
+				}
+			}
+			if (out!=null) {
+				// write current audio buffer
+				out.write(bbf.array(), 0, bbf.array().length);
+			} else {
+				try { Thread.sleep(100); } catch (Exception e) {}
+			}
+		}
 	}
 
 	private class MyPanel extends JPanel {
@@ -284,15 +318,16 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener {
 				int x = (int)((double)n*scale);
 				int y = getHeight()/2 - (int)(wfir[n]*(double)getHeight()/2);
 				g.drawLine(lx, ly, x, y);
+				g.drawString("("+n+","+String.format("%04f", wfir[n])+")", x, (n%2)==0 ? y-10 : y+10);
 				lx = x;
 				ly = y;
 			}
 		}
 
-		// Find largest magnitude value in a array from offset o, length l (step always 2)
+		// Find largest magnitude value in a array from offset o, length l
 		private int getMax(int[] a, int o, int l) {
 			int r = 0;
-			for (int i=o; i<o+l; i+=2) {
+			for (int i=o; i<o+l; i+=2) { // special step by two because this is demodulated IQ samples..
 				if (Math.abs(a[i])>r)
 					r=a[i];
 			}

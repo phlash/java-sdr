@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
 	<classpathentry kind="src" path=""/>
-	<classpathentry kind="lib" path="/home/sracf/Public/PhilA/qthid/bin/fcdapi.jar"/>
-	<classpathentry kind="lib" path="/home/sracf/Public/PhilA/JTransforms/jtransforms-2.3.jar"/>
+	<classpathentry kind="lib" path="/media/timmy/phlash/projects/qthid/bin/fcdapi.jar"/>
+	<classpathentry kind="lib" path="/media/timmy/phlash/projects/jtransforms-2.3.jar"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

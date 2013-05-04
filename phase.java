@@ -2,6 +2,7 @@
 
 import javax.sound.sampled.AudioFormat;
 import java.nio.ByteBuffer;
+import java.util.Properties;
 
 import java.awt.Graphics;
 import java.awt.Color;
@@ -45,7 +46,7 @@ public class phase extends JPanel implements jsdr.JsdrTab {
 		// Data points from buffer..
 		g.setColor(Color.YELLOW);
 		for(int s=0; s<dpy.length; s+=2) {
-			g.drawRect(bx+size/2+(dpy[s]*size/max), by+size/2+(dpy[s+1]*size/max), 0, 0);
+			g.drawRect(bx+size/2+(dpy[s]*size/max), by+size/2-(dpy[s+1]*size/max), 0, 0);
 		}
 		g.drawString(""+max,getWidth()/2+2,12);
 	}

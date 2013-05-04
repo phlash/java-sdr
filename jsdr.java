@@ -12,6 +12,7 @@ import java.nio.ByteOrder;
 import java.util.Properties;
 
 import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Mixer;
 import javax.sound.sampled.TargetDataLine;
@@ -30,16 +31,17 @@ import uk.org.funcube.fcdapi.FCD;
 public class jsdr implements Runnable {
 
 	public static Properties config;
-	public final String CFG_TITLE = "title";
-	public final String CFG_WIDTH = "width";
-	public final String CFG_HEIGHT= "height";
-	public final String CFG_AUDDEV= "audio-device";
-	public final String CFG_AUDRAT= "audio-rate";
-	public final String CFG_AUDBIT= "audio-bits";
-	public final String CFG_AUDMOD= "audio-mode";
-	public final String CFG_ICORR = "i-correction";
-	public final String CFG_QCORR = "q-correction";
-	public final String CFG_FREQ  = "frequency";
+	public static final String CFG_TITLE = "title";
+	public static final String CFG_WIDTH = "width";
+	public static final String CFG_HEIGHT= "height";
+	public static final String CFG_AUDDEV= "audio-device";
+	public static final String CFG_AUDRAT= "audio-rate";
+	public static final String CFG_AUDBIT= "audio-bits";
+	public static final String CFG_AUDMOD= "audio-mode";
+	public static final String CFG_ICORR = "i-correction";
+	public static final String CFG_QCORR = "q-correction";
+	public static final String CFG_FREQ  = "frequency";
+	public static final String CFG_FORCE = "force-fcd";
 
 	protected JFrame frame;
 	protected JLabel status;
@@ -54,6 +56,7 @@ public class jsdr implements Runnable {
 	private File fscan;
 	private float lastMax;
 	private boolean done;
+	private int lastMsecs;
 
 	public static String getConfig(String prop, String def) {
 		String val = config.getProperty(prop, def);
@@ -189,6 +192,7 @@ public class jsdr implements Runnable {
 		// Close handler
 		frame.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
+				saveConfig();
 				System.exit(0);
 			}
 		});
@@ -223,20 +227,22 @@ public class jsdr implements Runnable {
 	}
 
 	private boolean confirmScan() {
-		try {
-			String msg = (fscan!=null) ? "Stop scan?" : "Scan from here?";
-			int yn = JOptionPane.showConfirmDialog(frame, msg,
-				frame.getTitle(), JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-			if (0==yn) {
-				if (fscan!=null)
-					fscan = null;
-				else {
-					fscan = new File("scan.log");
-					fscan.delete();
-					return true;
+		if (fcd!=null) {
+			try {
+				String msg = (fscan!=null) ? "Stop scan?" : "Scan from here?";
+				int yn = JOptionPane.showConfirmDialog(frame, msg,
+					frame.getTitle(), JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+				if (0==yn) {
+					if (fscan!=null)
+						fscan = null;
+					else {
+						fscan = new File("scan.log");
+						fscan.delete();
+						return true;
+					}
 				}
-			}
-		} catch (Exception e) {}
+			} catch (Exception e) {}
+		}
 		return false;
 	}
 
@@ -248,56 +254,96 @@ public class jsdr implements Runnable {
 			status.setText("FCD tuned to "+freq+" kHz");
 	}
 
+	private boolean compareFormat(AudioFormat a, AudioFormat b) {
+		if (a.getChannels() == b.getChannels() &&
+			a.getEncoding() == b.getEncoding() &&
+			a.getFrameSize() == b.getFrameSize() &&
+			a.getSampleRate() == b.getSampleRate() &&
+			a.getSampleSizeInBits() == b.getSampleSizeInBits() &&
+			a.isBigEndian() == b.isBigEndian())
+			return true;
+		return false;
+	}
+
 	// Audio input thread..
 	public void run() {
-		// Open the appropriate device..
+		// Open the appropriate file/device..
 		String dev = config.getProperty(CFG_AUDDEV, "FUNcube Dongle");	// Default to FCD
-		if (dev.equals("FUNcube Dongle")) {
-			// FCD in use, we can tune it ourselves..
-			fcd = new FCD();
-			while (FCD.FME_APP!=fcd.fcdGetMode()) {
-				status.setText("FCD not present or not in app mode, resetting..");
-				fcd.fcdBlReset();
+		String frc = config.getProperty(CFG_FORCE, "false");
+		AudioInputStream audio = null;
+		boolean isFile = false;
+		if (dev.startsWith("file:")) {
+			isFile = true;
+			File fin = new File(dev.substring(5));
+			frame.setTitle(frame.getTitle()+": "+fin);
+			if (fin.canRead()) {
 				try {
-					Thread.sleep(1000);
-				} catch(Exception e) {}
+					audio = AudioSystem.getAudioInputStream(fin);
+					// Check format
+					AudioFormat af = audio.getFormat();
+					if (!compareFormat(af, format)) {
+						audio.close();
+						audio = null;
+						status.setText("Incompatible audio format: "+fin+": "+af);
+					}
+				} catch (Exception e) {}
+			} else {
+				status.setText("Unable to open file: "+fin);
 			}
-			freq = getIntConfig(CFG_FREQ, 100000);
-			fcdSetFreq(freq);
-		}
-		TargetDataLine line = null;
-		Mixer.Info[] mixers = AudioSystem.getMixerInfo();
-		int m;
-		for (m=0; m<mixers.length; m++) {
-			// NB: Linux puts the device name in description field, Windows in name field.. sheesh.
-			if (mixers[m].getDescription().indexOf(dev)>=0 ||
-			    mixers[m].getName().indexOf(dev)>=0) {
-				// Found mixer/device, try and get a capture line in specified format
-				try {
-					line = (TargetDataLine) AudioSystem.getTargetDataLine(format, mixers[m]);
-				} catch (Exception e) {
-					status.setText("Unable to open audio device: "+dev);
+		} else {
+			frame.setTitle(frame.getTitle()+": "+dev);
+			if (dev.equals("FUNcube Dongle") || frc.equals("true")) {
+				// FCD in use, we can tune it ourselves..
+				fcd = new FCD();
+				while (FCD.FME_APP!=fcd.fcdGetMode()) {
+					status.setText("FCD not present or not in app mode, resetting..");
+					fcd.fcdBlReset();
+					try {
+						Thread.sleep(1000);
+					} catch(Exception e) {}
 				}
-				break;
+				freq = getIntConfig(CFG_FREQ, 100000);
+				fcdSetFreq(freq);
+			}
+			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
+			int m;
+			for (m=0; m<mixers.length; m++) {
+				// NB: Linux puts the device name in description field, Windows in name field.. sheesh.
+				if (mixers[m].getDescription().indexOf(dev)>=0 ||
+				    mixers[m].getName().indexOf(dev)>=0) {
+					// Found mixer/device, try and get a capture line in specified format
+					try {
+						TargetDataLine line = (TargetDataLine) AudioSystem.getTargetDataLine(format, mixers[m]);
+						line.open(format, bufsize);
+						line.start();
+						audio = new AudioInputStream(line);
+					} catch (Exception e) {
+						status.setText("Unable to open audio device: "+dev);
+					}
+					break;
+				}
 			}
 		}
-		if (line!=null) {
+		if (audio!=null) {
 			try {
 				// Use a buffer large enough to produce ~10Hz refresh rate.
 				byte[] tmp = new byte[bufsize];
 				ByteBuffer buf = ByteBuffer.allocate(bufsize);
 				buf.order(format.isBigEndian() ?
 					ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
-				line.open(format, bufsize);
-				line.start();
 				while (!done) {
+					long st=System.currentTimeMillis();
+					int l=0;
 					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
-						buf.clear();
-						line.read(tmp, 0,tmp.length);
+						while (l<tmp.length)
+							l+=audio.read(tmp, l, tmp.length-l);
 					}
 					buf.clear();
-					line.read(tmp, 0, tmp.length);
+					l=0;
+					while (l<tmp.length)
+						l+=audio.read(tmp, l, tmp.length-l);
 					buf.put(tmp);
+					long mid=System.currentTimeMillis();
 					if (fscan!=null) {		// Retune ASAP after each buffer..
 						if (freq<2000000) {
 							fcdSetFreq(freq+100);
@@ -313,14 +359,19 @@ public class jsdr implements Runnable {
 							((JsdrTab)o).newBuffer(buf);
 						}
 					}
+					status.setText("last cycle (msecs): "+lastMsecs);
+					long end=System.currentTimeMillis();
+					lastMsecs = (int)(end-mid);
+					if (isFile) {
+						int tot=(int)(end-st);
+						Thread.sleep(tot<100 ? 100-tot : 0);
+					}
 				}
 				status.setText("Audio input done");
 			} catch (Exception e) {
 				status.setText("Audio oops: "+e);
 				e.printStackTrace();
 			}
-		} else {
-			status.setText("Unable to open audio");
 		}
 	}
 
@@ -348,6 +399,8 @@ public class jsdr implements Runnable {
 	private void saveConfig() {
 		try {
 			FileOutputStream cfo = new FileOutputStream("jsdr.properties");
+			config.setProperty(CFG_WIDTH, String.valueOf(frame.getWidth()));
+			config.setProperty(CFG_HEIGHT, String.valueOf(frame.getHeight()));
 			config.setProperty(CFG_ICORR, String.valueOf(ic));
 			config.setProperty(CFG_QCORR, String.valueOf(qc));
 			config.setProperty(CFG_FREQ, String.valueOf(freq));
@@ -367,6 +420,14 @@ public class jsdr implements Runnable {
 			cfi.close();
 		} catch (Exception e) {
 			System.err.println("Unable to load config, using defaults");
+		}
+		// Check for command line overrides
+		for (int i=0; i<args.length; i++) {
+			int o = args[i].indexOf('=');
+			if (o>0)
+				config.setProperty(args[i].substring(0,o), args[i].substring(o+1));
+			else if (args[i].startsWith("file:"))
+				config.setProperty(CFG_AUDDEV, args[i]);
 		}
 		// Get the UI up as soon as possible, we might need to display errors..
 		SwingUtilities.invokeLater(new Runnable() {
