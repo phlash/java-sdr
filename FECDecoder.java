@@ -515,6 +515,171 @@ public class FECDecoder {
 
 	/* ----------------------------------------------------------------------------------- */
 
+/* ---------- */
+/* Re-encoder */
+/* ---------- */
+
+/* Reference encoder for proposed coded AO-40 telemetry format - v1.0  7 Jan 2002
+ * Copyright 2002, Phil Karn, KA9Q
+ * This software may be used under the terms of the GNU Public License (GPL)
+ */
+
+/* Adapted from  the above enc_ref.c  as used by the spacecraft (JRM) */
+
+	private int Nbytes;                        /* Byte counter for encode_data() */
+	private int Bindex;                        /* Byte counter for interleaver */
+	private int Conv_sr;             /* Convolutional encoder shift register state */
+	private int[][] RS_block = new int[RSBLOCKS][NROOTS]; /* RS parity blocks */
+	private byte[] reencode = new byte[SYMPBLOCK] ;       /* Re-encoded symbols */
+
+	private static final int RS_poly[] = {
+  	249, 59, 66,  4, 43,126,251, 97, 30,  3,213, 50, 66,170,  5, 24
+	};
+
+/* Write one binary channel symbol into the interleaver frame and update the pointers */
+	private void interleave_symbol(int c){
+	  int row,col;
+	  col=Bindex/COLUMNS;
+	  row=Bindex%COLUMNS;
+	  if(c!=0)
+	    reencode[row*ROWS+col] = 1;
+	  Bindex++;
+  }
+
+/* Convolutionally encode and interleave one byte */
+	private void encode_and_interleave(int c, int cnt){
+	  while(cnt-- != 0){
+	    Conv_sr = (Conv_sr << 1) | (c >> 7);
+	    c <<= 1;
+	    interleave_symbol( Partab[Conv_sr & CPOLYA]);
+	    interleave_symbol(1-Partab[Conv_sr & CPOLYB]); /* Second encoder symbol is inverted */
+	  }
+	}
+
+/* Scramble a byte, convolutionally encode and interleave into frame */
+	private void scramble_and_encode(int c){
+	  c ^= Scrambler[Nbytes];      /* Scramble byte */
+	  encode_and_interleave(c,8);  /* RS encode and place into reencode buffer */
+	}
+
+
+/* Three user's entry points now follow.  They are:
+
+   init_encoder()                   Called once before using system.
+   encode_byte(unsigned char c)     Called with each user byte (i.e. 256 calls)
+   encode_parity()                  Called 64 times to finish off
+
+*/
+
+/* This function initializes the encoder. */
+	private void local_init_encoder(){
+	  int i,j,sr;
+	
+	  Nbytes  = 0;
+	  Conv_sr = 0;
+	  Bindex  = COLUMNS;            /* Sync vector is in first column; data starts here */
+	
+	  for(j=0;j<RSBLOCKS;j++)       /* Flush parity array*/
+	    for(i=0;i<NROOTS;i++)
+	      RS_block[j][i] = 0;
+	
+	  /* Clear re-encoded array */
+	  for(i=0;i<5200;i++)
+	    reencode[i] = 0;
+	
+	  /* Generate sync vector, interleave into re-encode array, 1st column */
+	  sr = 0x7f;
+	  for(i=0;i<65;i++){
+	    if((sr & 64)!=0)
+	      reencode[ROWS*i] = 1;      /* Every 80th symbol is a sync bit */
+	    sr = (sr << 1) | Partab[sr & SYNC_POLY];
+	  }
+	}
+
+
+/* This function is called with each user data byte to be encoded into the
+ * current frame. It should be called in sequence 256 times per frame, followed
+ * by 64 calls to encode_parity().
+ */
+
+	private void local_encode_byte(int c){
+	  int rsi;                /* RS block pointer */
+	  int i;
+	  int feedback;
+	
+	  /* Update the appropriate Reed-Solomon codeword */
+	  rsi = Nbytes & 1;
+	
+	  /* Compute feedback term */
+	  feedback = INDEX_OF[c ^ RS_block[rsi][0]];
+	
+	  /* If feedback is non-zero, multiply by each generator polynomial coefficient and
+	   * add to corresponding shift register elements
+	   */
+	  if(feedback != A0){
+	    int j;
+	
+	    /* This loop exploits the palindromic nature of the generator polynomial
+	     * to halve the number of discrete multiplications
+	     */
+	    for(j=0;j<15;j++){
+	      int t;
+	
+	      t = ALPHA_TO[mod255(feedback + RS_poly[j])];
+	      RS_block[rsi][j+1] ^= t; RS_block[rsi][31-j] ^= t;
+	    }
+	    RS_block[rsi][16] ^= ALPHA_TO[mod255(feedback + RS_poly[15])];
+	  }
+	
+	  /* Shift 32 byte RS register one position down */
+	  for(i=0;i<31;i++)
+	    RS_block[rsi][i] = RS_block[rsi][i+1];
+	
+	  /* Handle highest order coefficient, which is unity */
+	  if(feedback != A0){
+	    RS_block[rsi][31] = ALPHA_TO[feedback];
+	  } else {
+	    RS_block[rsi][31] = 0;
+	  }
+	  scramble_and_encode(c);
+	  Nbytes++;
+	}
+
+/* This function should be called 64 times after the 256 data bytes
+ * have been passed to update_encoder. Each call scrambles, encodes and
+ * interleaves one byte of Reed-Solomon parity.
+ */
+
+	private void local_encode_parity() {
+	  int c;
+	
+	  c =  RS_block[Nbytes & 1][(Nbytes-256)>>1];
+	  scramble_and_encode(c);
+	  if(++Nbytes == 320){
+	    /* Tail off the convolutional encoder (flush) */
+	    encode_and_interleave(0,6);
+	  }
+	}
+
+/* Encodes the 256 byte source block RSdecdata[] into 5200 byte block of symbols
+ * reencode[].  It has the same format as an off-air received block of symbols.
+ */
+
+	private void encode_FEC40(
+	   byte[] RSdecdata )           /* User's source data */
+	{
+	   int i;
+	   local_init_encoder();
+	   for(i=0;i<256;i++){
+	     local_encode_byte((int)RSdecdata[i]&0xff) ;
+	   }
+	   for(i=0;i<64;i++){
+	     local_encode_parity() ;
+	   }
+	}
+
+/* ----------------------------------------------------------------------------------- */
+
 	/****************************************************************************************************/
 	/*                                                                                                  */
 	/*   AMSAT AO-40 FEC Reference Decoder (by JRM)               Input                Output           */
@@ -529,7 +694,7 @@ public class FECDecoder {
 	public int FECDecode(byte[] raw, byte[] RSdecdata) {
 		byte[] symbols = new byte[NBITS*2+65+3];   // de-interleaved sync+symbols
 		byte[] vitdecdata = new byte[(NBITS-6)/8]; // array for Viterbi decoder output
-		int nRC = 1;
+		int nRC = 0;
 		/* Step 1: De-interleaver */
 	      {
 	        /* Input  array:  raw   */
@@ -646,35 +811,31 @@ public class FECDecoder {
 	        } */
 	        for(row=0;row<RSBLOCKS;row++) {
 	        	if(rserrs[row] == -1)
-	        		nRC = 0;	// FAIL condition
+	        		nRC = -1;	// FAIL condition
 	        }
 	      } /* end of rs section */
 
 
 	/* Step 4: Optional: Re-encode o/p and count channel errors  */
 	/* --------------------------------------------------------  */
-	/*
+
+		if (nRC>=0)
 	     {  int errors = 0;
 	        int i;
 	        // Input  array:  RSdecdata
 	        // Output array:  reencode
 
-	        encode_FEC40(reencode,RSdecdata) ;  // Re-encode in AO-40 FEC format
+	        encode_FEC40(RSdecdata) ;  // Re-encode in AO-40 FEC format
 
 	        // Count the channel errors
 	        errors = 0;
 	        for(i=0;i<SYMPBLOCK;i++)
-	          if ( reencode[i] != (raw[i]>>7) ) {
+	          if ( (reencode[i]&0xff) != ((raw[i]&0xff)>>7) ) {
 	            errors++ ;
 	          }
-
-	        if(Verbose){
-						char sz[80];
-	          sprintf(sz,"Channel symbol errors: %d (%.3g%%)",errors,100.*errors/SYMPBLOCK);
-						//_AppendText(sz);
-	        }
-
-	     }  end of reencode section */
+	          
+	        nRC = errors;
+	     }  //end of reencode section
 
 	/* --------------------------------------------------------*/
 
