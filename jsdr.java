@@ -43,6 +43,7 @@ public class jsdr implements Runnable {
 	public static final String CFG_FREQ  = "frequency";
 	public static final String CFG_FORCE = "force-fcd";
 	public static final String CFG_TAB = "tab-focus";
+	public static final String CFG_FUNCUBES = "funcube-demods";
 	public static Properties publish;
 
 	protected JFrame frame;
@@ -95,10 +96,13 @@ public class jsdr implements Runnable {
 	}
 
 	public void regHotKey(char c, String desc) {
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-				KeyStroke.getKeyStroke(c), "Key");
-		if (desc!=null)
-			hotkeys.setText(hotkeys.getText() + c+ ' ' + desc + "<br/>");
+		if (publish.getProperty("hotkey-"+c)==null) {
+			frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
+					KeyStroke.getKeyStroke(c), "Key");
+			if (desc!=null)
+				hotkeys.setText(hotkeys.getText() + c+ ' ' + desc + "<br/>");
+			publish.setProperty("hotkey-"+c, ""+desc);
+		}
 	}
 
 	@SuppressWarnings("serial")
@@ -172,11 +176,9 @@ public class jsdr implements Runnable {
 						lastMax = -1;
 					}
 				} else {
-					for (int t=0; t<tabs.getTabCount(); t++) {
-						Object o = tabs.getComponentAt(t);
-						if (o instanceof JsdrTab) {
-							((JsdrTab)o).hotKey(c);
-						}
+					Object o = tabs.getComponentAt(tabs.getSelectedIndex());
+					if (o instanceof JsdrTab) {
+						((JsdrTab)o).hotKey(c);
 					}
 				}
 				if (f>=50000) {
@@ -226,7 +228,11 @@ public class jsdr implements Runnable {
 		tabs.add("Spectrum", new fft(this, format, bufsize));
 		tabs.add("Phase", new phase(this, format, bufsize));
 		//tabs.add("Demodulator", new demod(this, format, bufsize));
-		tabs.add("FUNcube", new FUNcubeBPSKDemod(this, format, bufsize));
+		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
+		for (int fc=0; fc<nfcs; fc++) {
+			String nm = "FUNcube"+fc;
+			tabs.add(nm, new FUNcubeBPSKDemod(nm, this, format, bufsize));
+		}
 		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
 		hotkeys.setText(hotkeys.getText()+"</html>");
 		// Done - show it!

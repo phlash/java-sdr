@@ -86,6 +86,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 	private static final String CFG_DOFFT = "bpsk-dofft";
 	private static final String CFG_UPPER = "bpsk-upper";
 
+	private String name;
 	private jsdr parent;
 	private AudioFormat format;
 	private int samples;
@@ -96,7 +97,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 	private byte[] decoded = new byte[FEC_BLOCK_SIZE];
 	private FECDecoder decoder = new FECDecoder();
 	private double tuning, tuPhaseInc;
-	private int cntRaw, cntDS, cntBit, cntFEC;
+	private int cntRaw, cntDS, cntBit, cntFEC, dmErrBits;
 	private double energy1, energy2;
 
 	// debugging stuff
@@ -109,7 +110,8 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 	private double[] demodRe;
 	private int demodIdx, demodLastBit;
 
-	public FUNcubeBPSKDemod(jsdr p, AudioFormat af, int bufsize) {
+	public FUNcubeBPSKDemod(String nm, jsdr p, AudioFormat af, int bufsize) {
+		this.name = nm;
 		this.parent = p;
 		this.format = af;
 		int sbytes = (af.getSampleSizeInBits()+7)/8;
@@ -122,12 +124,12 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		parent.regHotKey('t', "BPSK tuner");
 		parent.regHotKey('F', "Toggle FFT demod");
 		parent.regHotKey('H', "Toggle High signal tracker");
-		tuning = (double)jsdr.getIntConfig(CFG_TUNING, 12000);
+		tuning = (double)jsdr.getIntConfig(name+"-"+CFG_TUNING, 12000);
 		tuPhaseInc = 2.0*Math.PI*tuning/format.getSampleRate();
 		tuned = new double[samples*2];
 		tunedIdx = 0;
-		doFFT = 0!=jsdr.getIntConfig(CFG_DOFFT, 0);
-		doUp = 0!=jsdr.getIntConfig(CFG_UPPER, 0);
+		doFFT = 0!=jsdr.getIntConfig(name+"-"+CFG_DOFFT, 0);
+		doUp = 0!=jsdr.getIntConfig(name+"-"+CFG_UPPER, 0);
 		demodIQ = new double[samples*DOWN_SAMPLE_RATE/(int)format.getSampleRate()*2];
 		demodIdx = 0;
 		downSmpl = new double[demodIQ.length];
@@ -143,7 +145,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		g.fillRect(0,0, getWidth(), getHeight());
 		// stats (text)
 		g.setColor(Color.GREEN);
-		g.drawString("decodeOK="+decodeOK+" raw="+cntRaw+" ds="+cntDS+" bit="+cntBit+" fec="+cntFEC, 10, 20);
+		g.drawString("decodeOK="+decodeOK+" dmErrBits="+dmErrBits+" raw="+cntRaw+" ds="+cntDS+" bit="+cntBit+" fec="+cntFEC, 10, 20);
 		if (doFFT)
 			g.drawString("centreBin="+centreBin, getWidth()-250, 20);
 		else
@@ -251,11 +253,9 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		// decoded bytes (oh yeah..)
 		if (decodeOK) {
 			for (int n=0; n<FEC_BLOCK_SIZE; n+=16) {
-				StringBuffer sb = new StringBuffer();
 				for (int l=0; l<16 && n+l<FEC_BLOCK_SIZE; l++) {
-					sb.append(String.format("%02x ", decoded[n+l] & 0xff));
+					g.drawString(String.format("%02x ", decoded[n+l] & 0xff), 10+(20*l), 40+n);
 				}
-				g.drawString(sb.toString(), 10, 40+n);
 			}
 		}
 	}
@@ -289,7 +289,8 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			// Software tuning..
 			RxMixTuner(i, q);
 		}
-		jsdr.publish.remove("bpsk-centre");
+		jsdr.publish.remove(name+"-bpsk-centre");
+		jsdr.publish.setProperty(name+"-bpsk-tune", ""+(int)tuning);
 	}
 
 	private double tuPhase = 0.0;
@@ -366,7 +367,8 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		// clamp centreBin above 102..
 		if (centreBin<102) centreBin = 102;
 		// publish for other modules
-		jsdr.publish.setProperty("bpsk-centre", ""+centreBin);
+		jsdr.publish.remove(name+"-bpsk-tune");
+		jsdr.publish.setProperty(name+"-bpsk-centre", ""+centreBin);
 		// reverse fft around peak power point..
 		System.arraycopy(fftFwd,2*(centreBin-102),fftRev,0,2*204);
 		fft.complexInverse(fftRev, true);
@@ -475,9 +477,10 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 					for (int n=0; n<FEC_BITS_SIZE; n++) {
 						dmFECBits[n] = (byte)(dmFECCorr[n]==1 ? 0xc0 : 0x40);
 					}
-					decodeOK = decoder.FECDecode(dmFECBits, decoded)!=0;
+					dmErrBits=decoder.FECDecode(dmFECBits, decoded);
 					cntFEC++;
 					dmMaxCorr=0;
+					decodeOK = dmErrBits<0 ? false : true;
 				}
 				if (dmCorr > dmMaxCorr)
 					dmMaxCorr=dmCorr;
@@ -532,10 +535,10 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			dmMaxCorr=0;
 		} else if ('F'==c) {
 			doFFT = !doFFT;
-			jsdr.config.setProperty(CFG_DOFFT, doFFT ? "1" : "0");
+			jsdr.config.setProperty(name+"-"+CFG_DOFFT, doFFT ? "1" : "0");
 		} else if ('H'==c) {
 			doUp = !doUp;
-			jsdr.config.setProperty(CFG_UPPER, doUp ? "1" : "0");
+			jsdr.config.setProperty(name+"-"+CFG_UPPER, doUp ? "1" : "0");
 		}
 	}
 	
@@ -544,7 +547,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			String tune = JOptionPane.showInputDialog(this, "Set tuning frequency",
 				"BPSK demodulator", JOptionPane.QUESTION_MESSAGE);
 			double r=Double.parseDouble(tune);
-			jsdr.config.setProperty(CFG_TUNING, ""+(int)r);
+			jsdr.config.setProperty(name+"-"+CFG_TUNING, ""+(int)r);
 			return r;
 		} catch (Exception e) {
 		}
