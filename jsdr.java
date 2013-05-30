@@ -114,8 +114,8 @@ public class jsdr implements Runnable {
 			false	// We always expect little endian samples
 		);
 		// Choose a buffer size that gives us ~10Hz refresh rate, then find a power of 2 below that..
-		int btmp = rate*size/10;
-		for (bufsize=256; (bufsize<<1)<btmp; bufsize<<=1);
+		bufsize = rate*size/10;
+		//for (bufsize=256; (bufsize<<1)<btmp; bufsize<<=1);
 
 		// The main frame
 		frame = new JFrame(getConfig(CFG_TITLE, "Java SDR v0.1"));

@@ -275,6 +275,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			doBufferFFT(buf);
 		else
 			doBufferTune(buf);
+		if (isVisible()) repaint();
 	}
 
 	private void doBufferTune(ByteBuffer buf) {
@@ -288,7 +289,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			// Software tuning..
 			RxMixTuner(i, q);
 		}
-		if (isVisible()) repaint();
+		jsdr.publish.remove("bpsk-centre");
 	}
 
 	private double tuPhase = 0.0;
@@ -371,9 +372,8 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		fft.complexInverse(fftRev, true);
 		// feed downsampler..
 		for (int i=0; i<samples; i++) {
-			RxDownSample(fftRev[2*i], fftRev[2*i+1]);
+			RxDownSample(fftRev[2*i], fftRev[2*i]);	// yes it drops Q component..
 		}
-		if (isVisible()) repaint();
 	}
 
 	// Down sample from input rate to DOWN_SAMPLE_RATE and low pass filter
@@ -426,7 +426,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			vcoPhase -= 2.0*Math.PI;
 		// quadrature demodulate carrier to base band with VCO, store in FIR buffer
 		dmBuf[dmPos][0]=i*cosTab[(int)(vcoPhase*(double)SINCOS_SIZE/(2.0*Math.PI))%SINCOS_SIZE];
-		dmBuf[dmPos][1]=i*sinTab[(int)(vcoPhase*(double)SINCOS_SIZE/(2.0*Math.PI))%SINCOS_SIZE];
+		dmBuf[dmPos][1]=q*sinTab[(int)(vcoPhase*(double)SINCOS_SIZE/(2.0*Math.PI))%SINCOS_SIZE];
 		// apply FIR (base band smoothing, root raised cosine)
 		double fi = 0.0, fq = 0.0;
 		for (int n=0; n<MATCHED_FILTER_SIZE; n++) {
