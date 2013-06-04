@@ -43,6 +43,7 @@ public class jsdr implements Runnable {
 	public static final String CFG_FREQ  = "frequency";
 	public static final String CFG_FORCE = "force-fcd";
 	public static final String CFG_TAB = "tab-focus";
+	public static final String CFG_SPLIT = "split-position";
 	public static final String CFG_FUNCUBES = "funcube-demods";
 	public static Properties publish;
 
@@ -50,6 +51,7 @@ public class jsdr implements Runnable {
 	protected JLabel status;
 	protected JLabel scanner;
 	protected JLabel hotkeys;
+	protected JSplitPane split;
 	protected JTabbedPane tabs;
 	protected int ic, qc;
 	private AudioFormat format;
@@ -117,19 +119,19 @@ public class jsdr implements Runnable {
 			rate, bits, chan, size, rate,
 			false	// We always expect little endian samples
 		);
-		// Choose a buffer size that gives us ~10Hz refresh rate, then find a power of 2 below that..
+		// Choose a buffer size that gives us ~10Hz refresh rate
 		bufsize = rate*size/10;
-		//for (bufsize=256; (bufsize<<1)<btmp; bufsize<<=1);
 
 		// The main frame
 		frame = new JFrame(getConfig(CFG_TITLE, "Java SDR v0.1"));
 		frame.setSize(getIntConfig(CFG_WIDTH, 800), getIntConfig(CFG_HEIGHT, 600));
 		frame.setResizable(true);
 		// The top-bottom split
-		JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+		split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 		frame.add(split);
-		split.setResizeWeight(0.75);
+		split.setResizeWeight(1.0);
 		split.setDividerSize(3);
+		split.setDividerLocation((double)getIntConfig(CFG_SPLIT, 75)/100.0);
 		// The tabbed display panes (in top)
 		tabs = new JTabbedPane(JTabbedPane.BOTTOM);
 		split.setTopComponent(tabs);
@@ -280,12 +282,14 @@ public class jsdr implements Runnable {
 		return false;
 	}
 
+	private String baseTitle = null;
 	private void fcdSetFreq(int f) {
+		if (baseTitle==null) baseTitle = frame.getTitle();
 		lastfreq = freq;
 		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqkHz(freq=f))
-			status.setText("Unable to tune FCD");
+			frame.setTitle(baseTitle+ ": Unable to tune FCD");
 		else
-			status.setText("FCD tuned to "+freq+" kHz");
+			frame.setTitle(baseTitle+" "+freq+" kHz");
 	}
 
 	private boolean compareFormat(AudioFormat a, AudioFormat b) {
@@ -441,6 +445,8 @@ public class jsdr implements Runnable {
 			FileOutputStream cfo = new FileOutputStream("jsdr.properties");
 			config.setProperty(CFG_WIDTH, String.valueOf(frame.getWidth()));
 			config.setProperty(CFG_HEIGHT, String.valueOf(frame.getHeight()));
+			config.setProperty(CFG_SPLIT, String.valueOf(split.getDividerLocation()*100/split.getHeight()));
+			config.setProperty(CFG_TAB, String.valueOf(tabs.getSelectedIndex()));
 			config.setProperty(CFG_ICORR, String.valueOf(ic));
 			config.setProperty(CFG_QCORR, String.valueOf(qc));
 			config.setProperty(CFG_FREQ, String.valueOf(freq));

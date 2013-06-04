@@ -97,7 +97,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 	private byte[] decoded = new byte[FEC_BLOCK_SIZE];
 	private FECDecoder decoder = new FECDecoder();
 	private double tuning, tuPhaseInc;
-	private int cntRaw, cntDS, cntBit, cntFEC, dmErrBits;
+	private int cntRaw, cntDS, cntBit, cntFEC, cntDec, dmErrBits;
 	private double energy1, energy2;
 
 	// debugging stuff
@@ -145,7 +145,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		g.fillRect(0,0, getWidth(), getHeight());
 		// stats (text)
 		g.setColor(Color.GREEN);
-		g.drawString("decodeOK="+decodeOK+" dmErrBits="+dmErrBits+" raw="+cntRaw+" ds="+cntDS+" bit="+cntBit+" fec="+cntFEC, 10, 20);
+		g.drawString("decodeOK="+decodeOK+" dmErrBits="+dmErrBits+" raw="+cntRaw+" ds="+cntDS+" bit="+cntBit+" fec="+cntFEC+" dec="+cntDec, 10, 20);
 		if (doFFT)
 			g.drawString("centreBin="+centreBin, getWidth()-250, 20);
 		else
@@ -481,6 +481,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 					cntFEC++;
 					dmMaxCorr=0;
 					decodeOK = dmErrBits<0 ? false : true;
+					cntDec += (decodeOK ? 1 : 0);
 				}
 				if (dmCorr > dmMaxCorr)
 					dmMaxCorr=dmCorr;
