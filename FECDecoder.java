@@ -1,6 +1,13 @@
 // Java port of Phil Karn's and J R Miller's AO-40 FEC decoder
 // Author: Phil Ashby, May 2013
 
+// This source is released under the terms of the Creative Commons
+// Non-Commercial Share Alike license:
+// http://creativecommons.org/licenses/by-nc-sa/3.0/
+
+// Author: Phil Ashby, based on previous work by Howard Long (G6LVB)
+// Duncan Hills, Phil Karn (KA9Q) and J R Miller
+
 public class FECDecoder {
 	// Reed-Solomon decoder constants
 	private static final int NN = 255;

@@ -1,4 +1,12 @@
 // BPSK demodulator targeted at FUNcube telemetry downlink
+
+// This source is released under the terms of the Creative Commons
+// Non-Commercial Share Alike license:
+// http://creativecommons.org/licenses/by-nc-sa/3.0/
+
+// Author: Phil Ashby, based on previous work by Howard Long (G6LVB)
+// and Duncan Hills.
+
 import java.awt.Color;
 import java.awt.Graphics;
 import java.nio.ByteBuffer;
