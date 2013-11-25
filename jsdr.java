@@ -45,6 +45,7 @@ public class jsdr implements Runnable {
 	public static final String CFG_TAB = "tab-focus";
 	public static final String CFG_SPLIT = "split-position";
 	public static final String CFG_FUNCUBES = "funcube-demods";
+	public static final String CFG_WAVE = "wave-out";
 	public static Properties publish;
 
 	protected JFrame frame;
@@ -63,6 +64,8 @@ public class jsdr implements Runnable {
 	private boolean done;
 	private int lastMsecs;
 	private boolean paused;
+	private String wave;
+	private FileOutputStream wout = null;
 
 	public static String getConfig(String prop, String def) {
 		String val = config.getProperty(prop, def);
@@ -122,6 +125,9 @@ public class jsdr implements Runnable {
 		// Choose a buffer size that gives us ~10Hz refresh rate
 		bufsize = rate*size/10;
 
+		// Raw recording file
+		wave = config.getProperty(CFG_WAVE, "");
+
 		// The main frame
 		frame = new JFrame(getConfig(CFG_TITLE, "Java SDR v0.1"));
 		frame.setSize(getIntConfig(CFG_WIDTH, 800), getIntConfig(CFG_HEIGHT, 600));
@@ -177,6 +183,8 @@ public class jsdr implements Runnable {
 						f = freq;
 						lastMax = -1;
 					}
+				} else if ('W'==c) {
+					toggleWav();
 				} else {
 					Object o = tabs.getComponentAt(tabs.getSelectedIndex());
 					if (o instanceof JsdrTab) {
@@ -195,7 +203,8 @@ public class jsdr implements Runnable {
 			"i/I and q/Q adjust DC offsets (up/Down)<br/>" +
 			"u/U tune up by 1/10kHz, d/D tune down by 1/10kHz<br/>" +
 			"s/S step up/down by 50kHz<br/>" +
-			"f enter frequency, @ start/stop scan<br/>"
+			"f enter frequency, @ start/stop scan<br/>" +
+			"W toggle raw recording to: "+wave+"<br/>"
 		);
 		regHotKey('p', null);
 		regHotKey('f', null);
@@ -210,6 +219,7 @@ public class jsdr implements Runnable {
 		regHotKey('s', null);
 		regHotKey('S', null);
 		regHotKey('@', null);
+		regHotKey('W', null);
 		frame.getLayeredPane().getActionMap().put("Key", act);
 		controls.add(hotkeys, BorderLayout.CENTER);
 
@@ -222,6 +232,8 @@ public class jsdr implements Runnable {
 		// Close handler
 		frame.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
+				if (wout!=null)
+					toggleWav();
 				saveConfig();
 				System.exit(0);
 			}
@@ -369,6 +381,7 @@ public class jsdr implements Runnable {
 				ByteBuffer buf = ByteBuffer.allocate(bufsize);
 				buf.order(format.isBigEndian() ?
 					ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
+				long orig = System.currentTimeMillis();
 				while (!done) {
 					synchronized(frame) {
 						while (paused) {
@@ -387,6 +400,8 @@ public class jsdr implements Runnable {
 					while (l<tmp.length)
 						l+=audio.read(tmp, l, tmp.length-l);
 					buf.put(tmp);
+					if (wout!=null)
+						wout.write(tmp);
 					long mid=System.currentTimeMillis();
 					if (fscan!=null) {		// Retune ASAP after each buffer..
 						if (freq<2000000) {
@@ -403,8 +418,8 @@ public class jsdr implements Runnable {
 							((JsdrTab)o).newBuffer(buf);
 						}
 					}
-					status.setText("last cycle (msecs): "+lastMsecs);
 					long end=System.currentTimeMillis();
+					status.setText((wout!=null?wave+":":"") + "running (secs): " + (end-orig)/1000 + " last cycle (msecs): "+lastMsecs);
 					lastMsecs = (int)(end-mid);
 					if (isFile) {
 						int tot=(int)(end-st);
@@ -436,6 +451,21 @@ public class jsdr implements Runnable {
 				scanner.setText("Last maxima: freq: " + lastfreq + " max: " + max);
 				lastMax = max;
 				saveConfig();
+			}
+		}
+	}
+
+	private void toggleWav() {
+		if (wout!=null) {
+			try {
+				wout.close();
+			} catch (Exception e) {}
+			wout = null;
+		} else {
+			if (wave!=null && wave.length()>0) {
+				try {
+					wout = new FileOutputStream(wave, true);
+				} catch (Exception e) {}
 			}
 		}
 	}
