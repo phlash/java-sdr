@@ -298,7 +298,7 @@ public class jsdr implements Runnable {
 	private void fcdSetFreq(int f) {
 		if (baseTitle==null) baseTitle = frame.getTitle();
 		lastfreq = freq;
-		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqkHz(freq=f))
+		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqKhz(freq=f))
 			frame.setTitle(baseTitle+ ": Unable to tune FCD");
 		else
 			frame.setTitle(baseTitle+" "+freq+" kHz");
@@ -346,8 +346,7 @@ public class jsdr implements Runnable {
 				// FCD in use, we can tune it ourselves..
 				fcd = new FCD();
 				while (FCD.FME_APP!=fcd.fcdGetMode()) {
-					status.setText("FCD not present or not in app mode, resetting..");
-					fcd.fcdBlReset();
+					status.setText("FCD not present or not in app mode..");
 					try {
 						Thread.sleep(1000);
 					} catch(Exception e) {}

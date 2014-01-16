@@ -1,6 +1,6 @@
 FREQ=100000
 PWD=$(shell pwd)
-JTRANS=$(PWD)/../JTransforms/jtransforms-2.3.jar
+JTRANS=$(PWD)/../../Downloads/jtransforms-2.3.jar
 FCDAPI=$(PWD)/../qthid/bin/fcdapi.jar
 #JTRANS=$(PWD)/../jtransforms-2.3.jar
 JNALIB=/usr/share/java/jna.jar
