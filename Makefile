@@ -1,12 +1,12 @@
 FREQ=100000
 PWD=$(shell pwd)
 JTRANS=$(PWD)/../../Downloads/jtransforms-2.3.jar
-FCDAPI=$(PWD)/../qthid/bin/fcdapi.jar
 #JTRANS=$(PWD)/../jtransforms-2.3.jar
 JNALIB=/usr/share/java/jna.jar
+LIBFCD=../fcdctl/libfcd.so
 
-CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class bin/FUNcubeBPSKDemod.class bin/FECDecoder.class
-CLASSPATH=$(FCDAPI):$(JTRANS):$(JNALIB)
+CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class bin/FUNcubeBPSKDemod.class bin/FECDecoder.class bin/FCD.class
+CLASSPATH=$(JTRANS):$(JNALIB)
 
 all: bin jsdr.jar
 

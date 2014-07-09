@@ -26,8 +26,6 @@ import javax.swing.JTabbedPane;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
-import uk.org.funcube.fcdapi.FCD;
-
 public class jsdr implements Runnable {
 
 	public static Properties config;
@@ -298,7 +296,7 @@ public class jsdr implements Runnable {
 	private void fcdSetFreq(int f) {
 		if (baseTitle==null) baseTitle = frame.getTitle();
 		lastfreq = freq;
-		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqKhz(freq=f))
+		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqkHz(freq=f))
 			frame.setTitle(baseTitle+ ": Unable to tune FCD");
 		else
 			frame.setTitle(baseTitle+" "+freq+" kHz");
