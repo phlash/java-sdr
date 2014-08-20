@@ -130,6 +130,29 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 //						g.drawString("Max", p, o-y-2);
 //					}
 		}
+		// BPSK tuning bar(s) (if available)
+		boolean dbar = true;
+		g.setColor(Color.CYAN);
+		for (int fc=0; dbar; fc++) {
+			dbar = false;
+			String nm = "FUNcube"+fc+"-bpsk-centre";
+			int cb = jsdr.getIntPublish(nm, -1);
+			if (cb>0) {
+				int tc = (int)((float)cb/s)+off;
+				g.drawLine(tc, getHeight(), tc, getHeight()*2/3);
+				g.drawString(nm+":"+cb, tc+5, getHeight()*5/6);
+				dbar = true;
+			}
+			nm = "FUNcube"+fc+"-bpsk-tune";
+			cb = jsdr.getIntPublish(nm, -1);
+			if (cb>0) {
+				int wd = (fmt.getChannels()<2) ? getWidth() : getWidth()/2;
+				int tc = (int)((float)cb/(fmt.getSampleRate()/2)*(float)wd)+off;
+				g.drawLine(tc, getHeight(), tc, getHeight()*2/3);
+				g.drawString(nm+":"+cb, tc+5, getHeight()*5/6);
+				dbar = true;
+			}
+		}
 	}
 	// Find largest magnitude value in a array from offset o, length l
 	private double getMax(double[]a, int o, int l) {

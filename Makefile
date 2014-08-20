@@ -1,24 +1,23 @@
 FREQ=100000
 PWD=$(shell pwd)
-#JTRANS=$(PWD)/../JTransforms/jtransforms-2.3.jar
-FCDAPI=$(PWD)/../qthid/bin/fcdapi.jar
+#JTRANS=$(PWD)/../../Downloads/jtransforms-2.3.jar
 JTRANS=$(PWD)/../jtransforms-2.3.jar
 JNALIB=/usr/share/java/jna.jar
+LIBFCD=../fcdctl/libfcd.so
 
-CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class
-CLASSPATH=$(FCDAPI):$(JTRANS):$(JNALIB)
+CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class bin/FUNcubeBPSKDemod.class bin/FECDecoder.class bin/FCD.class
+CLASSPATH=$(JTRANS):$(JNALIB)
 
-all: bin/jsdr.jar
+all: bin jsdr.jar
 
 clean:
-	rm -rf bin *~
+	rm -rf bin *~ jsdr.jar
 
-bin/jsdr.jar: $(CLASSES) JSDR.MF
+jsdr.jar: $(CLASSES) JSDR.MF
 	sed -e 's^CLASSPATH^$(FCDAPI) $(JTRANS) $(JNALIB)^' <JSDR.MF >bin/temp.mf
 	jar cfm $@ bin/temp.mf -C bin .
 
 # Special order-only dependancy, just ensures bin target is built before classes
-$(CLASSES): | bin
 bin:
 	mkdir -p bin
 
@@ -28,4 +27,4 @@ bin/%.class: %.java
 
 # Try it!
 test: all
-	java -jar bin/jsdr.jar
+	java -jar jsdr.jar

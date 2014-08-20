@@ -26,8 +26,6 @@ import javax.swing.JTabbedPane;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
-import uk.org.funcube.fcdapi.FCD;
-
 public class jsdr implements Runnable {
 
 	public static Properties config;
@@ -42,11 +40,17 @@ public class jsdr implements Runnable {
 	public static final String CFG_QCORR = "q-correction";
 	public static final String CFG_FREQ  = "frequency";
 	public static final String CFG_FORCE = "force-fcd";
+	public static final String CFG_TAB = "tab-focus";
+	public static final String CFG_SPLIT = "split-position";
+	public static final String CFG_FUNCUBES = "funcube-demods";
+	public static final String CFG_WAVE = "wave-out";
+	public static Properties publish;
 
 	protected JFrame frame;
 	protected JLabel status;
 	protected JLabel scanner;
 	protected JLabel hotkeys;
+	protected JSplitPane split;
 	protected JTabbedPane tabs;
 	protected int ic, qc;
 	private AudioFormat format;
@@ -57,6 +61,9 @@ public class jsdr implements Runnable {
 	private float lastMax;
 	private boolean done;
 	private int lastMsecs;
+	private boolean paused;
+	private String wave;
+	private FileOutputStream wout = null;
 
 	public static String getConfig(String prop, String def) {
 		String val = config.getProperty(prop, def);
@@ -76,11 +83,29 @@ public class jsdr implements Runnable {
 		return def;
 	}
 
+	public static String getPublish(String prop, String def) {
+		String val = publish.getProperty(prop, def);
+		return val;
+	}
+
+	public static int getIntPublish(String prop, int def) {
+		try {
+			String val = publish.getProperty(prop);
+			if (val!=null)
+				return Integer.parseInt(val);
+		} catch (Exception e) {
+		}
+		return def;
+	}
+
 	public void regHotKey(char c, String desc) {
-		frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
-				KeyStroke.getKeyStroke(c), "Key");
-		if (desc!=null)
-			hotkeys.setText(hotkeys.getText() + c+ ' ' + desc + "<br/>");
+		if (publish.getProperty("hotkey-"+c)==null) {
+			frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
+					KeyStroke.getKeyStroke(c), "Key");
+			if (desc!=null)
+				hotkeys.setText(hotkeys.getText() + c+ ' ' + desc + "<br/>");
+			publish.setProperty("hotkey-"+c, ""+desc);
+		}
 	}
 
 	@SuppressWarnings("serial")
@@ -98,15 +123,19 @@ public class jsdr implements Runnable {
 		// Choose a buffer size that gives us ~10Hz refresh rate
 		bufsize = rate*size/10;
 
+		// Raw recording file
+		wave = config.getProperty(CFG_WAVE, "");
+
 		// The main frame
 		frame = new JFrame(getConfig(CFG_TITLE, "Java SDR v0.1"));
 		frame.setSize(getIntConfig(CFG_WIDTH, 800), getIntConfig(CFG_HEIGHT, 600));
 		frame.setResizable(true);
 		// The top-bottom split
-		JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+		split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 		frame.add(split);
-		split.setResizeWeight(0.75);
+		split.setResizeWeight(1.0);
 		split.setDividerSize(3);
+		split.setDividerLocation((double)getIntConfig(CFG_SPLIT, 75)/100.0);
 		// The tabbed display panes (in top)
 		tabs = new JTabbedPane(JTabbedPane.BOTTOM);
 		split.setTopComponent(tabs);
@@ -120,7 +149,12 @@ public class jsdr implements Runnable {
 			public void actionPerformed(ActionEvent e) {
 				char c = e.getActionCommand().charAt(0);
 				int f = -1;
-				if ('i'==c)
+				if ('p'==c) {
+					paused = !paused;
+					synchronized(frame) {
+						frame.notify();
+					}
+				} else if ('i'==c)
 					ic+=1;
 				else if('I'==c)
 					ic-=1;
@@ -128,7 +162,7 @@ public class jsdr implements Runnable {
 					qc+=1;
 				else if('Q'==c)
 					qc-=1;
-				else if('f'==c || 'F'==c) {
+				else if('f'==c) {
 					f = freqDialog();
 				} else if('u'==c) {
 					f = freq+1;
@@ -147,12 +181,12 @@ public class jsdr implements Runnable {
 						f = freq;
 						lastMax = -1;
 					}
+				} else if ('W'==c) {
+					toggleWav();
 				} else {
-					for (int t=0; t<tabs.getTabCount(); t++) {
-						Object o = tabs.getComponentAt(t);
-						if (o instanceof JsdrTab) {
-							((JsdrTab)o).hotKey(c);
-						}
+					Object o = tabs.getComponentAt(tabs.getSelectedIndex());
+					if (o instanceof JsdrTab) {
+						((JsdrTab)o).hotKey(c);
 					}
 				}
 				if (f>=50000) {
@@ -163,11 +197,14 @@ public class jsdr implements Runnable {
 		};
 		hotkeys = new JLabel(
 			"<html><b>Hotkeys</b><br/>"+
+			"p pause/resume input<br/>"+
 			"i/I and q/Q adjust DC offsets (up/Down)<br/>" +
 			"u/U tune up by 1/10kHz, d/D tune down by 1/10kHz<br/>" +
 			"s/S step up/down by 50kHz<br/>" +
-			"f enter frequency, @ start/stop scan<br/>"
+			"f enter frequency, @ start/stop scan<br/>" +
+			"W toggle raw recording to: "+wave+"<br/>"
 		);
+		regHotKey('p', null);
 		regHotKey('f', null);
 		regHotKey('i', null);
 		regHotKey('I', null);
@@ -180,6 +217,7 @@ public class jsdr implements Runnable {
 		regHotKey('s', null);
 		regHotKey('S', null);
 		regHotKey('@', null);
+		regHotKey('W', null);
 		frame.getLayeredPane().getActionMap().put("Key", act);
 		controls.add(hotkeys, BorderLayout.CENTER);
 
@@ -192,6 +230,8 @@ public class jsdr implements Runnable {
 		// Close handler
 		frame.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
+				if (wout!=null)
+					toggleWav();
 				saveConfig();
 				System.exit(0);
 			}
@@ -199,7 +239,13 @@ public class jsdr implements Runnable {
 		// The content in each tab
 		tabs.add("Spectrum", new fft(this, format, bufsize));
 		tabs.add("Phase", new phase(this, format, bufsize));
-		tabs.add("Demodulator", new demod(this, format, bufsize));
+		//tabs.add("Demodulator", new demod(this, format, bufsize));
+		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
+		for (int fc=0; fc<nfcs; fc++) {
+			String nm = "FUNcube"+fc;
+			tabs.add(nm, new FUNcubeBPSKDemod(nm, this, format, bufsize));
+		}
+		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
 		hotkeys.setText(hotkeys.getText()+"</html>");
 		// Done - show it!
 		frame.setVisible(true);
@@ -246,12 +292,14 @@ public class jsdr implements Runnable {
 		return false;
 	}
 
+	private String baseTitle = null;
 	private void fcdSetFreq(int f) {
+		if (baseTitle==null) baseTitle = frame.getTitle();
 		lastfreq = freq;
 		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqkHz(freq=f))
-			status.setText("Unable to tune FCD");
+			frame.setTitle(baseTitle+ ": Unable to tune FCD");
 		else
-			status.setText("FCD tuned to "+freq+" kHz");
+			frame.setTitle(baseTitle+" "+freq+" kHz");
 	}
 
 	private boolean compareFormat(AudioFormat a, AudioFormat b) {
@@ -296,8 +344,7 @@ public class jsdr implements Runnable {
 				// FCD in use, we can tune it ourselves..
 				fcd = new FCD();
 				while (FCD.FME_APP!=fcd.fcdGetMode()) {
-					status.setText("FCD not present or not in app mode, resetting..");
-					fcd.fcdBlReset();
+					status.setText("FCD not present or not in app mode..");
 					try {
 						Thread.sleep(1000);
 					} catch(Exception e) {}
@@ -331,7 +378,14 @@ public class jsdr implements Runnable {
 				ByteBuffer buf = ByteBuffer.allocate(bufsize);
 				buf.order(format.isBigEndian() ?
 					ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
+				long orig = System.currentTimeMillis();
 				while (!done) {
+					synchronized(frame) {
+						while (paused) {
+							status.setText("paused");
+							frame.wait();
+						}
+					}
 					long st=System.currentTimeMillis();
 					int l=0;
 					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
@@ -343,6 +397,8 @@ public class jsdr implements Runnable {
 					while (l<tmp.length)
 						l+=audio.read(tmp, l, tmp.length-l);
 					buf.put(tmp);
+					if (wout!=null)
+						wout.write(tmp);
 					long mid=System.currentTimeMillis();
 					if (fscan!=null) {		// Retune ASAP after each buffer..
 						if (freq<2000000) {
@@ -359,8 +415,8 @@ public class jsdr implements Runnable {
 							((JsdrTab)o).newBuffer(buf);
 						}
 					}
-					status.setText("last cycle (msecs): "+lastMsecs);
 					long end=System.currentTimeMillis();
+					status.setText((wout!=null?wave+":":"") + "running (secs): " + (end-orig)/1000 + " last cycle (msecs): "+lastMsecs);
 					lastMsecs = (int)(end-mid);
 					if (isFile) {
 						int tot=(int)(end-st);
@@ -396,11 +452,28 @@ public class jsdr implements Runnable {
 		}
 	}
 
+	private void toggleWav() {
+		if (wout!=null) {
+			try {
+				wout.close();
+			} catch (Exception e) {}
+			wout = null;
+		} else {
+			if (wave!=null && wave.length()>0) {
+				try {
+					wout = new FileOutputStream(wave, true);
+				} catch (Exception e) {}
+			}
+		}
+	}
+
 	private void saveConfig() {
 		try {
 			FileOutputStream cfo = new FileOutputStream("jsdr.properties");
 			config.setProperty(CFG_WIDTH, String.valueOf(frame.getWidth()));
 			config.setProperty(CFG_HEIGHT, String.valueOf(frame.getHeight()));
+			config.setProperty(CFG_SPLIT, String.valueOf(split.getDividerLocation()*100/split.getHeight()));
+			config.setProperty(CFG_TAB, String.valueOf(tabs.getSelectedIndex()));
 			config.setProperty(CFG_ICORR, String.valueOf(ic));
 			config.setProperty(CFG_QCORR, String.valueOf(qc));
 			config.setProperty(CFG_FREQ, String.valueOf(freq));
@@ -414,6 +487,7 @@ public class jsdr implements Runnable {
 	public static void main(String[] args) {
 		// Load config..
 		config = new Properties();
+		publish= new Properties();
 		try {
 			FileInputStream cfi = new FileInputStream("jsdr.properties");
 			config.load(cfi);
