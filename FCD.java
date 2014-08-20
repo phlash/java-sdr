@@ -22,11 +22,14 @@
 
 //package uk.org.funcube.fcdapi;
 
+import com.sun.jna.Platform;
 import com.sun.jna.Library;
+import com.sun.jna.win32.StdCallLibrary;
 import com.sun.jna.Structure;
 import com.sun.jna.Native;
 import com.sun.jna.NativeLibrary;
 import java.net.URI;
+import java.util.HashMap;
 
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.AudioFormat;
@@ -110,6 +113,10 @@ public class FCD {
 	private static libfcd inst;
 	static {
 		try {
+			// 0. Determine if we should load 32 or 64-bit native code..
+			String dll = "fcd";
+			if (Platform.is64Bit())
+				dll = "fcd64";
 			// Some ugly path hackery to avoid LD_LIBRARY_PATH et al:
 			// 1. Get a URL for a known file in our jar file, extract path component..
 			String pth = FCD.class.getResource("/FCD.class").getPath();
@@ -122,10 +129,15 @@ public class FCD {
 			int i2 = pth.lastIndexOf('/', i1>0 ? i1 : pth.length());
 			if (i2>0) {
 				pth = pth.substring(0, i2+1);
-				System.err.println("native library: " + pth);
-				NativeLibrary.addSearchPath("fcd", pth);
+				System.err.println("native library path: " + pth);
+				NativeLibrary.addSearchPath(dll, pth);
 			}
-			inst = (libfcd) Native.loadLibrary("fcd", libfcd.class);
+			HashMap opts = null;
+			if (Platform.isWindows())
+				opts = new HashMap(){{
+					put( Library.OPTION_FUNCTION_MAPPER, StdCallLibrary.FUNCTION_MAPPER );
+				}};
+			inst = (libfcd) Native.loadLibrary(dll, libfcd.class, opts);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
