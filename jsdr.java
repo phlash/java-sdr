@@ -342,7 +342,7 @@ public class jsdr implements Runnable {
 			frame.setTitle(frame.getTitle()+": "+dev);
 			if (dev.equals("FUNcube Dongle") || frc.equals("true")) {
 				// FCD in use, we can tune it ourselves..
-				fcd = new FCD();
+				fcd = FCD.getFCD();
 				while (FCD.FME_APP!=fcd.fcdGetMode()) {
 					status.setText("FCD not present or not in app mode..");
 					try {
