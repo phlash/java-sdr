@@ -1,13 +1,14 @@
 FREQ=100000
 PWD=$(shell pwd)
 JTRANS=../jtransforms-2.3.jar
-JNALIB=/usr/share/java/jna.jar
-JNAPLT=/usr/share/java/jna-platform.jar
-#JNALIB=../jna-4.1.0.jar
-#JNAPLT=../jna-platform-4.1.0.jar
-LIBFCD=../fcdctl/libfcd.so
-WINFCD=../fcdctl/fcd.dll
-W64FCD=../fcdctl/fcd64.dll
+#JNALIB=/usr/share/java/jna.jar
+#JNAPLT=/usr/share/java/jna-platform.jar
+JNALIB=../jna-4.1.0.jar
+JNAPLT=../jna-platform-4.1.0.jar
+LIBFCD=../../fcdctl/libfcd.so
+L64FCD=libfcd64.so
+WINFCD=../../fcdctl/fcd.dll
+W64FCD=../../fcdctl/fcd64.dll
 
 CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class bin/FUNcubeBPSKDemod.class bin/FECDecoder.class \
 	bin/FCD.class bin/FCDlinux.class bin/FCDwindows.class bin/HIDwin32.class
@@ -25,6 +26,8 @@ bin/jsdr.jar: $(CLASSES) JSDR.MF
 # Special order-only dependancy, just ensures bin target is built before classes
 bin:
 	mkdir -p bin
+	ln -s $(LIBFCD) bin
+	ln -s libfcd.so bin/$(L64FCD)
 
 # Compile that java
 bin/%.class: %.java

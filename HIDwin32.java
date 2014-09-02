@@ -614,6 +614,8 @@ public class HIDwin32 {
             result = Hid.INSTANCE.HidD_GetAttributes(HandleToDevice, HIDAttributes);
             if (result == 0) {
                 debug("For device with index " + Integer.toString(index) + " HidD_GetAttributes: " + getSystemError(Kernel32.INSTANCE.GetLastError()));
+            } else {
+                debug("Checking device (" + Integer.toString(index) + "): VID=" + Integer.toHexString(HIDAttributes.VendorID & 0xffff) + " PID=" + Integer.toHexString(HIDAttributes.ProductID & 0xffff));
             }
             /* Check VID & PID of the opened device */
             if (HIDAttributes.VendorID == vendorID && HIDAttributes.ProductID == productID) {
