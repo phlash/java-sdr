@@ -154,10 +154,10 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			}
 		}
 	}
-	// Find largest magnitude value in a array from offset o, length l
+	// Find largest magnitude value in a array from offset o, length l, stride 2
 	private double getMax(double[]a, int o, int l) {
 		double r = 0;
-		for (int i=o; i<o+l; i++) {
+		for (int i=o; i<o+l; i+=2) {
 			if (Math.abs(a[i])>r)
 				r=a[i];
 		}

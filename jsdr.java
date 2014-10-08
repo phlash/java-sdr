@@ -355,6 +355,7 @@ public class jsdr implements Runnable {
 			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 			int m;
 			for (m=0; m<mixers.length; m++) {
+				// System.err.println("Mixer: " + mixers[m].getName() + " / " + mixers[m].getDescription());
 				// NB: Linux puts the device name in description field, Windows in name field.. sheesh.
 				if (mixers[m].getDescription().indexOf(dev)>=0 ||
 				    mixers[m].getName().indexOf(dev)>=0) {
@@ -365,7 +366,7 @@ public class jsdr implements Runnable {
 						line.start();
 						audio = new AudioInputStream(line);
 					} catch (Exception e) {
-						status.setText("Unable to open audio device: "+dev);
+						status.setText("Unable to open audio device: "+dev+ ": "+e.getMessage());
 					}
 					break;
 				}
