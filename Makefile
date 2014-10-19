@@ -20,7 +20,7 @@ clean:
 	rm -rf bin *~
 
 bin/jsdr.jar: $(CLASSES) JSDR.MF
-	sed -e 's^CLASSPATH^$(JTRANS) $(JNALIB) $(JNAPLT)^' <JSDR.MF >bin/temp.mf
+	sed -e 's^CLASSPATH^../$(JTRANS) ../$(JNALIB) ../$(JNAPLT)^' <JSDR.MF >bin/temp.mf
 	cd bin; jar cfm jsdr.jar temp.mf *.class
 
 # Special order-only dependancy, just ensures bin target is built before classes

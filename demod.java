@@ -9,8 +9,6 @@ import javax.sound.sampled.SourceDataLine;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.Properties;
-
 import java.awt.GridLayout;
 import java.awt.Graphics;
 import java.awt.Color;
@@ -29,15 +27,15 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 	private AudioFormat fmt, aud;
 	private Thread thr;
 	private int[] sam;
-	private boolean dofir;
+	private boolean dofir, doagc;
 	private int flo, fhi;
 	private int[] fir;
 	private int fof;
 	private double[] wfir;
 	private int[] mod = {0, 0};
 	private ByteBuffer bbf;
-	private int max, li, lq;
-	private JRadioButton off, am, fm;
+	private int max, avg, li, lq;
+	private JRadioButton off, raw, am, fm;
 	private JComboBox sel;
 	private JLabel dbg;
 	private ArrayList<Mixer.Info> mix;
@@ -56,7 +54,9 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 		// weights for FIR filter
 		wfir = new double[21];
 		// generate default filter as all-pass
-		weights(Integer.MIN_VALUE);
+		this.flo = Integer.MIN_VALUE;
+		this.fhi = Integer.MAX_VALUE;
+		weights();
 		// processing buffer for demodulation
 		int sbytes = (af.getSampleSizeInBits()+7)/8;
 		sam = new int[bufsize/sbytes/af.getChannels()*2];
@@ -70,12 +70,15 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 		this.off = new JRadioButton("Off");
 		this.off.setSelected(true);
 		top.add(this.off);
+		this.raw  = new JRadioButton("Raw");
+		top.add(this.raw);
 		this.am  = new JRadioButton("AM");
 		top.add(this.am);
 		this.fm  = new JRadioButton("FM");
 		top.add(this.fm);
 		ButtonGroup grp = new ButtonGroup();
 		grp.add(this.off);
+		grp.add(this.raw);
 		grp.add(this.am);
 		grp.add(this.fm);
 		this.sel = new JComboBox();
@@ -102,14 +105,14 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 		this.thr.start();
 		// register keys for filter switching
 		this.dofir = false;
-		this.flo = 0;
-		this.fhi = +10000;
+		this.doagc = false;
 		this.mod[0] = -(this.flo+this.fhi)/2;
 		this.mod[1] = 0;
 		p.regHotKey('b', "Toggle Bandpass filter");
 		p.regHotKey('n', "Narrow filter");
-		p.regHotKey('w', "Widen filter");
-		p.regHotKey('a', "All pass filter");
+		p.regHotKey('w', "Wide filter");
+		p.regHotKey('r', "Reset filter (all pass)");
+		p.regHotKey('a', "Toggle AGC");
 	}
 
 	public void actionPerformed(ActionEvent e) {
@@ -124,22 +127,30 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 
 	// generate FIR filter weights according to:
 	// http://www.labbookpages.co.uk/audio/firWindowing.html
-	private void weights(int fcut) {
+	// using the bandpass equation, with a hamming window
+	private void weights() {
 		// all-pass?
-		if (Integer.MIN_VALUE==fcut) {
+		if (Integer.MIN_VALUE==flo) {
 			for (int i=0; i<wfir.length; i++)
 				wfir[i]=0;
 			wfir[(wfir.length-1)/2]=1;
-		// low-pass
+		// band-pass
 		} else {
-			double dfc = (double)fcut/fmt.getSampleRate();
+			// normalise frequency between 0 and 0.5*samplerate
+			double nlo = (double)flo/fmt.getSampleRate();
+			double nhi = (double)fhi/fmt.getSampleRate();
+			// filter order == length-1
 			int ord = wfir.length-1;
+			// calculate weights, apply hamming window
 			for (int n=0; n<wfir.length; n++) {
 				if (n==ord/2) {
-					wfir[n]=2*dfc;
+					wfir[n]=2*(nhi-nlo);
 				} else {
-					wfir[n]=(Math.sin(2*Math.PI*dfc*(n-ord/2))/(Math.PI*(n-ord/2)));
+					wfir[n]=
+						 (Math.sin(2*Math.PI*nhi*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)))
+						-(Math.sin(2*Math.PI*nlo*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)));
 				}
+				wfir[n] *= 0.54 - 0.46*Math.cos(2*Math.PI*(double)n/(double)ord);
 			}
 		}
 		// clear previous samples (if any)
@@ -193,31 +204,36 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 		//   determine AGC factor while measuring phase rotation rate (inter sample vector product)
 		//   apply AGC to measured phase rotation rate and output in mono (so far!)
 		max = 1;
-		int avg=0;
+		avg = 0;
 		for(int s=0; s<sam.length; s+=2) {
 			sam[s] = buf.getShort()+parent.ic;
 			if (fmt.getChannels()>1)
 				sam[s+1] = buf.getShort()+parent.qc;
 			else
 				sam[s+1] = 0;
-			// band-pass filter?
+			// apply filter?
 			if (dofir) {
-				int[] sh = { 0, 0 };
-				complex_gen(sh, mod);
+				//int[] sh = { 0, 0 };
+				//complex_gen(sh, mod);
 				int[] fs = { sam[s], sam[s+1] };
 				int[] os = { 0, 0 };
-				complex_mod(fs, sh, os);
-				filter(os, fs);
-				sam[s]=fs[0];
-				sam[s+1]=fs[1];
+				//complex_mod(fs, sh, os);
+				filter(fs, os);
+				sam[s]=os[0];
+				sam[s+1]=os[1];
+			}
+			// Raw
+			if (raw.isSelected()) {
+				; // do nothing, as expected for raw pass through..
 			}
 			// AM
 			if (am.isSelected()) {
+				// measure amplitude of sample, update running average
 				sam[s] = (int)Math.sqrt(sam[s]*sam[s]+sam[s+1]*sam[s+1]);
-				avg += sam[s];
-
+				avg = ((s/2)*avg+sam[s])/(s/2+1);
+			} 
 			// FM
-			} else {
+			if (fm.isSelected()){
 				// http://kom.aau.dk/group/05gr506/report/node10.html#SECTION04615000000000000000
 				int v = (li*sam[s+1])-(lq*sam[s]); 
 				li = sam[s];
@@ -226,16 +242,14 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 			}
 			max = Math.max(max, Math.abs(sam[s]));
 		}
-		// fix up AGC for AM
+		// fix up maximum for AM
 		if (am.isSelected()) {
-			avg = avg/(sam.length/2);
 			max -= avg;
 		}
-		//dbg.setText("Demod: max="+max+", avg="+avg);
-		// Write audio buffer, apply AGC
+		// Write audio buffer, apply AGC if enabled
 		bbf.clear();
 		for (int s=0; s<sam.length; s+=2) {
-			sam[s] = ((am.isSelected()) ? ((sam[s]-avg)*8192)/max : (sam[s]*8192)/max);
+			sam[s] = (am.isSelected() ? sam[s]-avg : sam[s]) * (doagc ? 8192/max : 1);
 			short v = (short) sam[s];
 			// Left
 			bbf.putShort(v);
@@ -248,20 +262,26 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 	public void hotKey(char c) {
 		if ('b'==c) {
 			dofir = !dofir;
-			if (dofir) {
-				weights(this.fhi-this.flo);
-				this.mod[0]=-(this.fhi-this.flo)/2;
-			}
-		}/* else if ('n'==c) {
-			flo = -1000;
-			fhi = +1000;
+		} else if ('n'==c) {
+			flo = +1000;
+			fhi = +2000;
 		} else if ('w'==c) {
-			flo = -10000;
+			flo = 0;
 			fhi = +10000;
-		} else if ('a'==c) {
+		} else if ('r'==c) {
 			flo = fhi = Integer.MIN_VALUE;
+		} else if ('a'==c) {
+			doagc = !doagc;
 		}
-		weights(flo, fhi);*/
+		weights();
+		if (dofir) {
+			this.mod[0]=-(this.fhi-this.flo)/2;
+			jsdr.publish.setProperty("demod-filter-low", ""+this.flo);
+			jsdr.publish.setProperty("demod-filter-high", ""+this.fhi);
+		} else {
+			jsdr.publish.remove("demod-filter-low");
+			jsdr.publish.remove("demod-filter-high");
+		}
 	}
 
 	public void run() {
@@ -304,10 +324,12 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 			g.setColor(Color.BLUE);
 			double scale = (sam.length/2)/getWidth();
 			int ly=getHeight()/2;
-			g.drawString("scale: "+scale + ", fir: "+dofir + " ("+flo+","+fhi+")", 10, 10);
+			g.drawString("scale: "+scale + ", fir: "+dofir + " agc: " + doagc + " ("+flo+","+fhi+") max: "+max + " avg: " + avg, 10, 10);
 			for (int x=0; x<getWidth()-1; x++) {
 				int i = (int)((double)x*scale);
-				g.drawLine(x, ly, x+1, getMax(sam, i*2, (int)scale)*getHeight()/16384+getHeight()/2);
+				int y = getHeight()/2 - getMax(sam, i*2, (int)scale)*getHeight()/16384;
+				g.drawLine(x, ly, x+1, y);
+				ly = y;
 			}
 			// show filter weights..
 			g.setColor(Color.RED);
