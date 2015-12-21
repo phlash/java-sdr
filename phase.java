@@ -2,8 +2,6 @@
 
 import javax.sound.sampled.AudioFormat;
 import java.nio.ByteBuffer;
-import java.util.Properties;
-
 import java.awt.Graphics;
 import java.awt.Color;
 import javax.swing.JPanel;

@@ -52,30 +52,19 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 	}
 
 	protected void paintComponent(Graphics g) {
-		// Reticle
+		// Clear to black
 		g.setColor(Color.BLACK);
 		g.fillRect(0, 0, getWidth(), getHeight());
-		g.setColor(Color.DARK_GRAY);
-		g.drawLine(0, getHeight()/3, getWidth(), getHeight()/3);
-		g.drawLine(0, getHeight()*2/3, getWidth(), getHeight()*2/3);
-		int my1 = getHeight()*2/3-2;
-		int my2 = getHeight()*2/3+2;
-		int mxs = getWidth()/96;	// produces ~1kHz markers
-		for (int x=mxs; x<getWidth()-mxs; x+=mxs) {
-			g.drawLine(x, my1, x, my2);
-		}
-		if (fmt.getChannels()<2) {
-			g.drawString("0 Hz", 2, getHeight()*2/3-2);
-			g.drawString(""+fmt.getSampleRate()/2+"Hz", getWidth()-50, getHeight()*2/3-2);
-		} else {
-			g.drawLine(getWidth()/2, my1-1, getWidth()/2, my2+1);
-			g.drawString("0 Hz", getWidth()/2-10, getHeight()*2/3-2);
-			g.drawString("-"+fmt.getSampleRate()/2+"Hz", 2, getHeight()*2/3-2);
-			g.drawString("+"+fmt.getSampleRate()/2+"Hz", getWidth()-80, getHeight()*2/3-2);
-		}
-		// Step size for resampling to screen size
+		// Step size and FFT offset for resampling to screen size
 		float s = (float)(dat.length/2)/(float)getWidth();
+		int off = getWidth()/2;
+		// adjust step and offset if only single channel data
+		if (fmt.getChannels()<2) {
+			s = s/2;
+			off = 0;
+		}
 		int t = (int)Math.ceil(s);
+		g.setColor(Color.DARK_GRAY);
 		if (dow)
 			g.drawString("step(win): "+s+"/"+t, 2, 24);
 		else
@@ -103,7 +92,16 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			g.drawLine(p, ly+o, p+1, y+o);
 			ly = y;
 		}
-		// PSD in lower 1/3rd (log scale if selected)
+		// PSD and demod filter in lower 1/3rd (log scale if selected)
+		int flo = jsdr.getIntPublish("demod-filter-low", Integer.MIN_VALUE);
+		int fhi = jsdr.getIntPublish("demod-filter-high", Integer.MAX_VALUE);
+		if (flo > Integer.MIN_VALUE && fhi < Integer.MAX_VALUE) {
+			g.setColor(Color.decode("0x0f0f0f"));
+			int wd = (fmt.getChannels()<2) ? getWidth() : getWidth()/2;
+			int ts = (int)((float)flo/(fmt.getSampleRate()/2)*(float)wd)+off;
+			int tw = (int)(((float)fhi-flo)/(fmt.getSampleRate()/2)*(float)wd);
+			g.fillRect(ts, getHeight()*2/3, tw, getHeight());
+		}
 		g.setColor(Color.GREEN);
 		double pmax = psd[psd.length-1];
 		if (log)
@@ -114,12 +112,6 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		h = (float)(auto ? (log ? (getHeight()/3)/Math.log10(pmax+1.0) : (getHeight()/3)/pmax) : gain);
 		g.drawString("gain("+(auto?'A':'-')+"):"+h, getWidth()-100, getHeight()*2/3+12);
 		ly = 0;
-		int off = getWidth()/2;
-		// adjust scale and offset if only single channel data
-		if (fmt.getChannels()<2) {
-			s = s/2;
-			off = 0;
-		}
 		for (int p=0; p<getWidth()-1; p++) {
 			// offset and wrap index to display negative freqs, then positives..
 			int i = (p+off) % getWidth();
@@ -152,6 +144,25 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 				g.drawString(nm+":"+cb, tc+5, getHeight()*5/6);
 				dbar = true;
 			}
+		}
+		// Reticle
+		g.setColor(Color.DARK_GRAY);
+		g.drawLine(0, getHeight()/3, getWidth(), getHeight()/3);
+		g.drawLine(0, getHeight()*2/3, getWidth(), getHeight()*2/3);
+		int my1 = getHeight()*2/3-2;
+		int my2 = getHeight()*2/3+2;
+		int mxs = getWidth()/20;
+		boolean abv = true;
+		for (int x=0; x<getWidth()-mxs; x+=mxs) {
+			g.drawLine(x, my1, x, my2);
+			double _mf;
+			if (fmt.getChannels()<2) {
+				_mf = fmt.getSampleRate()/2.0 * (double)x / (double)getWidth();
+			} else {
+				_mf = (fmt.getSampleRate() * (double)x / (double)getWidth()) - fmt.getSampleRate()/2.0;
+			}
+			g.drawString((int)_mf + "Hz", x, abv ? getHeight()*2/3-2 : getHeight()*2/3+12);
+			abv = !abv;
 		}
 	}
 	// Find largest magnitude value in a array from offset o, length l, stride 2

@@ -18,20 +18,14 @@
  *
  ***************************************************************************/
 
-// Java binding to libfcd.so/fcd.dll using JNA (http://jna.java.net)
+// Java binding to libfcd.so using JNA (http://jna.java.net)
 
 //package uk.org.funcube.fcdapi;
 
 import com.sun.jna.Platform;
 import com.sun.jna.Library;
-import com.sun.jna.win32.StdCallLibrary;
-import com.sun.jna.Structure;
 import com.sun.jna.Native;
-import com.sun.jna.NativeLibrary;
 import java.net.URI;
-import java.util.HashMap;
-
-import java.io.FileOutputStream;
 
 public class FCDlinux extends FCD {
 
@@ -76,32 +70,25 @@ public class FCDlinux extends FCD {
 	static {
 		try {
 			// 0. Determine if we should load 32 or 64-bit native code..
-			String dll = "fcd";
+			String dll = "libfcd.so";
 			if (Platform.is64Bit())
-				dll = "fcd64";
+				dll = "libfcd64.so";
 			// Some ugly path hackery to avoid LD_LIBRARY_PATH et al:
 			// 1. Get a URL for a known file in our jar file, extract path component..
 			String pth = FCD.class.getResource("/FCD.class").getPath();
 			//System.err.println("Res path="+pth);
 			// 2. Decode via URI incase we have whitespace in the path, extract next path component..
 			pth = new URI(pth).getPath();
-			//System.err.println("Dec path="+pth);
+			System.err.println("Dec path="+pth);
 			// 3. Trim off trailing text to get our installation directory.
 			int i1 = pth.indexOf('!');
 			int i2 = pth.lastIndexOf('/', i1>0 ? i1 : pth.length());
 			if (i2>0) {
 				pth = pth.substring(0, i2+1);
 				System.err.println("native library path: " + pth);
-				NativeLibrary.addSearchPath(dll, pth);
+				dll = pth + dll;
 			}
-			if (Platform.isWindows()) {
-				HashMap opts = new HashMap(){{
-					put( Library.OPTION_FUNCTION_MAPPER, StdCallLibrary.FUNCTION_MAPPER );
-				}};
-				inst = (libfcd) Native.loadLibrary(dll, libfcd.class, opts);
-			} else {
-				inst = (libfcd) Native.loadLibrary(dll, libfcd.class);
-			}
+			inst = (libfcd) Native.loadLibrary(dll, libfcd.class);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

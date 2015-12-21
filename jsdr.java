@@ -248,7 +248,7 @@ public class jsdr implements Runnable {
 		// The content in each tab
 		tabs.add("Spectrum", new fft(this, format, bufsize));
 		tabs.add("Phase", new phase(this, format, bufsize));
-		//tabs.add("Demodulator", new demod(this, format, bufsize));
+		tabs.add("Demodulator", new demod(this, format, bufsize));
 		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
 		for (int fc=0; fc<nfcs; fc++) {
 			String nm = "FUNcube"+fc;
@@ -305,7 +305,8 @@ public class jsdr implements Runnable {
 	private void fcdSetFreq(int f) {
 		if (baseTitle==null) baseTitle = frame.getTitle();
 		lastfreq = freq;
-		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqkHz(freq=f))
+		freq = f;
+		if (null==fcd || FCD.FME_APP!=fcd.fcdAppSetFreqkHz(freq))
 			frame.setTitle(baseTitle+ ": Unable to tune FCD");
 		else
 			frame.setTitle(baseTitle+" "+freq+" kHz");
@@ -360,6 +361,7 @@ public class jsdr implements Runnable {
 				}
 				freq = getIntConfig(CFG_FREQ, 100000);
 				fcdSetFreq(freq);
+				status.setText("FCD tuned ok");
 			}
 			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 			int m;
@@ -374,6 +376,7 @@ public class jsdr implements Runnable {
 						line.open(format, bufsize);
 						line.start();
 						audio = new AudioInputStream(line);
+						status.setText("Audio device opened ok");
 					} catch (Exception e) {
 						statusMsg("Unable to open audio device: "+dev+ ": "+e.getMessage());
 					}
