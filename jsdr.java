@@ -10,6 +10,8 @@ import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Properties;
+import java.util.Calendar;
+import java.text.SimpleDateFormat;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
@@ -28,6 +30,7 @@ import javax.swing.SwingUtilities;
 
 public class jsdr implements Runnable {
 
+	private static SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss: ");
 	public static Properties config;
 	public static final String CFG_TITLE = "title";
 	public static final String CFG_WIDTH = "width";
@@ -96,6 +99,12 @@ public class jsdr implements Runnable {
 		} catch (Exception e) {
 		}
 		return def;
+	}
+
+	public void statusMsg(String msg) {
+		status.setText(msg);
+		String dat = sdf.format(Calendar.getInstance().getTime());
+		System.err.println(dat + msg);
 	}
 
 	public void regHotKey(char c, String desc) {
@@ -264,10 +273,10 @@ public class jsdr implements Runnable {
 					frame.getTitle(), JOptionPane.QUESTION_MESSAGE);
 				return Integer.parseInt(tune);
 			} catch (Exception e) {
-				status.setText("Invalid frequency");
+				statusMsg("Invalid frequency");
 			}
 		} else {
-			status.setText("Not an FCD, unable to tune");
+			statusMsg("Not an FCD, unable to tune");
 		}
 		return -1;
 	}
@@ -332,11 +341,11 @@ public class jsdr implements Runnable {
 					if (!compareFormat(af, format)) {
 						audio.close();
 						audio = null;
-						status.setText("Incompatible audio format: "+fin+": "+af);
+						statusMsg("Incompatible audio format: "+fin+": "+af);
 					}
 				} catch (Exception e) {}
 			} else {
-				status.setText("Unable to open file: "+fin);
+				statusMsg("Unable to open file: "+fin);
 			}
 		} else {
 			frame.setTitle(frame.getTitle()+": "+dev);
@@ -344,7 +353,7 @@ public class jsdr implements Runnable {
 				// FCD in use, we can tune it ourselves..
 				fcd = FCD.getFCD();
 				while (FCD.FME_APP!=fcd.fcdGetMode()) {
-					status.setText("FCD not present or not in app mode..");
+					statusMsg("FCD not present or not in app mode..");
 					try {
 						Thread.sleep(1000);
 					} catch(Exception e) {}
@@ -355,7 +364,7 @@ public class jsdr implements Runnable {
 			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 			int m;
 			for (m=0; m<mixers.length; m++) {
-				// System.err.println("Mixer: " + mixers[m].getName() + " / " + mixers[m].getDescription());
+				statusMsg("Mixer: " + mixers[m].getName() + " / " + mixers[m].getDescription());
 				// NB: Linux puts the device name in description field, Windows in name field.. sheesh.
 				if (mixers[m].getDescription().indexOf(dev)>=0 ||
 				    mixers[m].getName().indexOf(dev)>=0) {
@@ -366,13 +375,14 @@ public class jsdr implements Runnable {
 						line.start();
 						audio = new AudioInputStream(line);
 					} catch (Exception e) {
-						status.setText("Unable to open audio device: "+dev+ ": "+e.getMessage());
+						statusMsg("Unable to open audio device: "+dev+ ": "+e.getMessage());
 					}
 					break;
 				}
 			}
 		}
 		if (audio!=null) {
+			statusMsg("Audio from: " + dev);
 			try {
 				// Use a buffer large enough to produce ~10Hz refresh rate.
 				byte[] tmp = new byte[bufsize];
@@ -383,20 +393,24 @@ public class jsdr implements Runnable {
 				while (!done) {
 					synchronized(frame) {
 						while (paused) {
-							status.setText("paused");
+							scanner.setText("paused");
 							frame.wait();
 						}
 					}
 					long st=System.currentTimeMillis();
 					int l=0;
 					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
-						while (l<tmp.length)
+						while (l<tmp.length) {
 							l+=audio.read(tmp, l, tmp.length-l);
+							scanner.setText("skip buffer: " + (System.currentTimeMillis()-st) + " len: " + l + "/" + tmp.length);
+						}
 					}
 					buf.clear();
 					l=0;
-					while (l<tmp.length)
+					while (l<tmp.length) {
 						l+=audio.read(tmp, l, tmp.length-l);
+						scanner.setText("read buffer: " + (System.currentTimeMillis()-st) + " len: " + l + "/" + tmp.length);
+					}
 					buf.put(tmp);
 					if (wout!=null)
 						wout.write(tmp);
@@ -406,7 +420,7 @@ public class jsdr implements Runnable {
 							fcdSetFreq(freq+100);
 						} else {
 							fscan = null;
-							status.setText("Scan complete!");
+							statusMsg("Scan complete!");
 						}
 					}
 					for (int t=0; t<tabs.getTabCount(); t++) {
@@ -414,22 +428,25 @@ public class jsdr implements Runnable {
 						if (o instanceof JsdrTab) {
 							buf.rewind();
 							((JsdrTab)o).newBuffer(buf);
+							scanner.setText("tab: " + t);
 						}
 					}
 					long end=System.currentTimeMillis();
-					status.setText((wout!=null?wave+":":"") + "running (secs): " + (end-orig)/1000 + " last cycle (msecs): "+lastMsecs);
+					statusMsg((wout!=null?wave+":":"") + "running (secs): " + (end-orig)/1000 + " last cycle (msecs): "+lastMsecs);
 					lastMsecs = (int)(end-mid);
 					if (isFile) {
 						int tot=(int)(end-st);
 						Thread.sleep(tot<100 ? 100-tot : 0);
 					}
 				}
-				status.setText("Audio input done");
+				statusMsg("Audio input done");
 			} catch (Exception e) {
-				status.setText("Audio oops: "+e);
+				statusMsg("Audio oops: "+e);
 				e.printStackTrace();
 			}
 		}
+		else
+			statusMsg("No audio device opened");
 	}
 
 	// Callback used by fft module to pass up maxima from each buffer
@@ -443,7 +460,7 @@ public class jsdr implements Runnable {
 				fs.close();
 			} catch (Exception e) {
 				fscan = null;
-				status.setText("Scan aborted, cannot write log");
+				statusMsg("Scan aborted, cannot write log");
 			}
 			if (max>lastMax) {
 				scanner.setText("Last maxima: freq: " + lastfreq + " max: " + max);
@@ -481,7 +498,7 @@ public class jsdr implements Runnable {
 			config.store(cfo, "Java SDR V0.1");
 			cfo.close();
 		} catch (Exception e) {
-			status.setText("Save oops: "+e);
+			statusMsg("Save oops: "+e);
 		}
 	}
 
