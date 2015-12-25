@@ -148,6 +148,8 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 
 	@Override
 	protected void paintComponent(Graphics g) {
+		// render time
+		long stime=System.nanoTime();
 		// erase bg
 		g.setColor(Color.BLACK);
 		g.fillRect(0,0, getWidth(), getHeight());
@@ -162,6 +164,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 		g.drawString("e2="+energy2, getWidth()-250, 52);
 		g.drawString("eO="+dmEnergyOut, getWidth()-250, 68);
 		g.drawString("com="+dmMaxCorr+" co="+dmCorr, getWidth()-250, 84);
+		long ttime=System.nanoTime();
 
 		// vector and linear plots of baseband IQ values.. plot of demodulated bits
 		double mi = 0.0, mq = 0.0;
@@ -201,6 +204,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			g.drawLine(xo+n, getHeight()-301-(demodBits[n-1]*50), xo+n+1, getHeight()-301-(demodBits[n]*50));
 		}
 		g.drawString("len="+demodIQ.length/2+" mi="+((int)(mi*10.0)/10.0)+" mq="+((int)(mq*10.0)/10.0), xo, getHeight()-205);
+		long iqtime=System.nanoTime();
 		// fft of tuned signal
 		DoubleFFT_1D fft = new DoubleFFT_1D(tuned.length/2);
 		fft.complexForward(tuned);
@@ -214,6 +218,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 				mo = n/2;
 			}
 		}
+		long ftime=System.nanoTime();
 		xo = 9+SINCOS_SIZE+10;
 		double pi = (double)(psd.length/2)/(double)(getWidth()-xo);
 		g.setColor(Color.WHITE);
@@ -232,6 +237,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			ly = y;
 		}
 		g.drawString("samples="+samples+" pi="+((int)(10.0*pi)/10.0)+" psd="+((int)(max*10.0)/10.0)+"@"+mo, xo+5, getHeight()-190);
+		long ptime=System.nanoTime();
 
 		// fft of downsampled signal
 		fft = new DoubleFFT_1D(downSmpl.length/2);
@@ -257,6 +263,7 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			ly = y;
 		}
 		g.drawString("downS="+downSmpl.length/2+" pi="+((int)(10.0*pi)/10.0)+" psd="+((int)(max*10.0)/10.0)+"@"+mo, xo+5, getHeight()-170);
+		long dtime=System.nanoTime();
 
 		// decoded bytes (oh yeah..)
 		if (decodeOK) {
@@ -266,6 +273,14 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 				}
 			}
 		}
+		long etime=System.nanoTime();
+		parent.logMsg("FUN render (nsecs) txt/iq/fft/psd/dwn/dec: " +
+			(ttime-stime) + "/" +
+			(iqtime-ttime) + "/" +
+			(ftime-iqtime) + "/" +
+			(ptime-ftime) + "/" +
+			(dtime-ptime) + "/" +
+			(etime-dtime));
 	}
 	
 	private double getMax(double[] d, int o, int l) {

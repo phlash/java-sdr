@@ -47,6 +47,7 @@ public class jsdr implements Runnable {
 	public static final String CFG_SPLIT = "split-position";
 	public static final String CFG_FUNCUBES = "funcube-demods";
 	public static final String CFG_WAVE = "wave-out";
+	public static final String CFG_VERB = "verbose";
 	public static Properties publish;
 
 	protected JFrame frame;
@@ -63,7 +64,6 @@ public class jsdr implements Runnable {
 	private File fscan;
 	private float lastMax;
 	private boolean done;
-	private int lastMsecs;
 	private boolean paused;
 	private String wave;
 	private FileOutputStream wout = null;
@@ -103,8 +103,14 @@ public class jsdr implements Runnable {
 
 	public void statusMsg(String msg) {
 		status.setText(msg);
-		String dat = sdf.format(Calendar.getInstance().getTime());
-		System.err.println(dat + msg);
+		logMsg(msg);
+	}
+
+	public void logMsg(String msg) {
+		if (getConfig(CFG_VERB, "false").equals("true")) {
+			String dat = sdf.format(Calendar.getInstance().getTime());
+			System.err.println(dat + msg);
+		}
 	}
 
 	public void regHotKey(char c, String desc) {
@@ -392,7 +398,8 @@ public class jsdr implements Runnable {
 				ByteBuffer buf = ByteBuffer.allocate(bufsize);
 				buf.order(format.isBigEndian() ?
 					ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
-				long orig = System.currentTimeMillis();
+				long otime = System.nanoTime();
+				long ttimes[] = new long[tabs.getTabCount()];
 				while (!done) {
 					synchronized(frame) {
 						while (paused) {
@@ -400,24 +407,27 @@ public class jsdr implements Runnable {
 							frame.wait();
 						}
 					}
-					long st=System.currentTimeMillis();
-					int l=0;
+					long stime=System.nanoTime();
+					int l=0, rds=0;
 					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
 						while (l<tmp.length) {
 							l+=audio.read(tmp, l, tmp.length-l);
-							scanner.setText("skip buffer: " + (System.currentTimeMillis()-st) + " len: " + l + "/" + tmp.length);
+							++rds;
 						}
+						logMsg("audio reads (skip)="+rds);
 					}
 					buf.clear();
-					l=0;
+					l=rds=0;
 					while (l<tmp.length) {
 						l+=audio.read(tmp, l, tmp.length-l);
-						scanner.setText("read buffer: " + (System.currentTimeMillis()-st) + " len: " + l + "/" + tmp.length);
+						++rds;
 					}
+					logMsg("audio reads="+rds);
+					long rtime=System.nanoTime();
 					buf.put(tmp);
 					if (wout!=null)
 						wout.write(tmp);
-					long mid=System.currentTimeMillis();
+					long wtime=System.nanoTime();
 					if (fscan!=null) {		// Retune ASAP after each buffer..
 						if (freq<2000000) {
 							fcdSetFreq(freq+100);
@@ -426,19 +436,32 @@ public class jsdr implements Runnable {
 							statusMsg("Scan complete!");
 						}
 					}
+					long ftime=System.nanoTime();
 					for (int t=0; t<tabs.getTabCount(); t++) {
 						Object o = tabs.getComponentAt(t);
 						if (o instanceof JsdrTab) {
 							buf.rewind();
 							((JsdrTab)o).newBuffer(buf);
-							scanner.setText("tab: " + t);
 						}
+						ttimes[t]=System.nanoTime();
 					}
-					long end=System.currentTimeMillis();
-					statusMsg((wout!=null?wave+":":"") + "running (secs): " + (end-orig)/1000 + " last cycle (msecs): "+lastMsecs);
-					lastMsecs = (int)(end-mid);
+					long etime=System.nanoTime();
+					StringBuffer sb = new StringBuffer(
+						(wout!=null?wave+":":"") +
+						"running (secs): " +
+						(etime-otime)/1000000000 +
+						" proc times (nsecs) rd/wr/fcd/tab[,tab]/cyc: "
+					);
+					sb.append((rtime-stime));
+					sb.append("/"+(wtime-rtime));
+					sb.append("/"+(ftime-wtime));
+					sb.append("/"+(ttimes[0]-ftime));
+					for (int t=1; t<tabs.getTabCount(); t++)
+						sb.append(","+(ttimes[t]-ttimes[t-1]));
+					sb.append("/"+(etime-stime));
+					logMsg(sb.toString());
 					if (isFile) {
-						int tot=(int)(end-st);
+						int tot=(int)((etime-stime)/1000000);
 						Thread.sleep(tot<100 ? 100-tot : 0);
 					}
 				}

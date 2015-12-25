@@ -52,6 +52,8 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 	}
 
 	protected void paintComponent(Graphics g) {
+		// time render
+		long stime=System.nanoTime();
 		// Clear to black
 		g.setColor(Color.BLACK);
 		g.fillRect(0, 0, getWidth(), getHeight());
@@ -82,6 +84,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			g.drawLine(p, ly+o, p+1, y+o);
 			ly = y;
 		}
+		long itime=System.nanoTime();
 		// Q in middle 1/3rd
 		g.setColor(Color.BLUE);
 		g.drawString("Q: "+parent.qc, 2, getHeight()/3+12);
@@ -92,6 +95,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			g.drawLine(p, ly+o, p+1, y+o);
 			ly = y;
 		}
+		long qtime=System.nanoTime();
 		// PSD and demod filter in lower 1/3rd (log scale if selected)
 		int flo = jsdr.getIntPublish("demod-filter-low", Integer.MIN_VALUE);
 		int fhi = jsdr.getIntPublish("demod-filter-high", Integer.MAX_VALUE);
@@ -122,6 +126,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 //						g.drawString("Max", p, o-y-2);
 //					}
 		}
+		long ptime=System.nanoTime();
 		// BPSK tuning bar(s) (if available)
 		boolean dbar = true;
 		g.setColor(Color.CYAN);
@@ -145,6 +150,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 				dbar = true;
 			}
 		}
+		long ttime=System.nanoTime();
 		// Reticle
 		g.setColor(Color.DARK_GRAY);
 		g.drawLine(0, getHeight()/3, getWidth(), getHeight()/3);
@@ -164,6 +170,13 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			g.drawString((int)_mf + "Hz", x, abv ? getHeight()*2/3-2 : getHeight()*2/3+12);
 			abv = !abv;
 		}
+		long rtime=System.nanoTime();
+		parent.logMsg("fftRender (nsecs) i/q/psd/tun/ret: " +
+			(itime-stime) + "/" +
+			(qtime-itime) + "/" +
+			(ptime-qtime) + "/" +
+			(ttime-ptime) + "/" +
+			(rtime-ttime));
 	}
 	// Find largest magnitude value in a array from offset o, length l, stride 2
 	private double getMax(double[]a, int o, int l) {

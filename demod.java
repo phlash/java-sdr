@@ -318,6 +318,8 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 
 	private class MyPanel extends JPanel {
 		public void paintComponent(Graphics g) {
+			// render time
+			long stime=System.nanoTime();
 			// render audio waveform buffer
 			g.setColor(Color.BLACK);
 			g.fillRect(0, 0, getWidth(), getHeight());
@@ -331,6 +333,7 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 				g.drawLine(x, ly, x+1, y);
 				ly = y;
 			}
+			long atime=System.nanoTime();
 			// show filter weights..
 			g.setColor(Color.RED);
 			scale = (double)getWidth() / (double)21;
@@ -344,6 +347,8 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 				lx = x;
 				ly = y;
 			}
+			long etime=System.nanoTime();
+			parent.logMsg("demod render (nsecs) aud/fil: " + (atime-stime) + "/" + (etime-atime));
 		}
 
 		// Find largest magnitude value in a array from offset o, length l

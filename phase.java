@@ -22,6 +22,8 @@ public class phase extends JPanel implements jsdr.JsdrTab {
 	}
 
 	public void paintComponent(Graphics g) {
+		// time render
+		long stime = System.nanoTime();
 		// Get constraining dimension and box offsets
 		int size = getWidth();
 		if (getHeight()<size)
@@ -41,12 +43,15 @@ public class phase extends JPanel implements jsdr.JsdrTab {
 		g.drawString("I: "+parent.ic, bx+2, by+12);
 		g.setColor(Color.BLUE);
 		g.drawString("Q: "+parent.qc, bx+2, by+22);
+		long rtime = System.nanoTime();
 		// Data points from buffer..
 		g.setColor(Color.YELLOW);
 		for(int s=0; s<dpy.length; s+=2) {
 			g.drawRect(bx+size/2+(dpy[s]*size/max), by+size/2-(dpy[s+1]*size/max), 0, 0);
 		}
 		g.drawString(""+max,getWidth()/2+2,12);
+		long etime = System.nanoTime();
+		parent.logMsg("phase render (nsecs): ret/pts: " + (rtime-stime) + "/" + (etime-rtime));
 	}
 
 	public void newBuffer(ByteBuffer buf) {
