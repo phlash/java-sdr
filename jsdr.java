@@ -367,7 +367,7 @@ public class jsdr implements Runnable {
 				}
 				freq = getIntConfig(CFG_FREQ, 100000);
 				fcdSetFreq(freq);
-				status.setText("FCD tuned ok");
+				statusMsg("FCD tuned ok");
 			}
 			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 			int m;
@@ -382,7 +382,7 @@ public class jsdr implements Runnable {
 						line.open(format, bufsize);
 						line.start();
 						audio = new AudioInputStream(line);
-						status.setText("Audio device opened ok");
+						statusMsg("Audio device opened ok");
 					} catch (Exception e) {
 						statusMsg("Unable to open audio device: "+dev+ ": "+e.getMessage());
 					}

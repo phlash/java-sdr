@@ -89,18 +89,20 @@ public class FCDlinux extends FCD {
 				dll = pth + dll;
 			}
 			inst = (libfcd) Native.loadLibrary(dll, libfcd.class);
-		} catch (Exception e) {
+		} catch (Throwable e) {
 			e.printStackTrace();
+			System.err.println("**** Continuing without FCD tuning support ****");
+			inst = null;
 		}
 	}
 
 	// Provide synchronized wrappers for library
 	public synchronized int fcdGetVersion() {
-		return inst.fcdGetVersion();
+		return inst!=null ? inst.fcdGetVersion() : FME_APP;
 	}
 
 	public synchronized int fcdGetMode() {
-		return inst.fcdGetMode();
+		return inst!=null ? inst.fcdGetMode() : FME_APP;
 	}
 
 	public synchronized int fcdGetFwVerStr(StringBuffer ver) {
@@ -112,15 +114,15 @@ public class FCDlinux extends FCD {
 	}
 
 	public synchronized int fcdAppReset() {
-		return inst.fcdAppReset();
+		return inst!=null ? inst.fcdAppReset() : FME_NONE;
 	}
 
 	public synchronized int fcdAppSetFreqkHz(int nFreq) {
-		return inst.fcdAppSetFreqkHz(nFreq);
+		return inst!=null ? inst.fcdAppSetFreqkHz(nFreq) : FME_APP;
 	}
 
 	public synchronized int fcdAppSetFreq(int nFreq) {
-		return inst.fcdAppSetFreq(nFreq);
+		return inst!=null ? inst.fcdAppSetFreq(nFreq) : FME_APP;
 	}
 
 /*

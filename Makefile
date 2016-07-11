@@ -5,15 +5,11 @@ JNALIB=/usr/share/java/jna.jar
 JNAPLT=/usr/share/java/jna-platform.jar
 #JNALIB=../jna-4.1.0.jar
 #JNAPLT=../jna-platform-4.1.0.jar
-LIBFCD=../fcdctl/libfcd.so
-L64FCD=libfcd64.so
-WINFCD=../fcdctl/fcd.dll
-W64FCD=../fcdctl/fcd64.dll
 
 CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class bin/FUNcubeBPSKDemod.class bin/FECDecoder.class \
 	bin/FCD.class bin/FCDlinux.class bin/FCDwindows.class bin/HIDwin32.class
 DEPS=$(JTRANS) $(JNALIB) $(JNAPLT)
-BINS=$(addprefix bin/,$(notdir $(DEPS) $(LIBFCD) $(L64FCD)))
+BINS=$(addprefix bin/,$(notdir $(DEPS)))
 SPACE := 
 SPACE += 
 COMPILE_CP=$(subst $(SPACE),:,$(DEPS))
@@ -31,8 +27,6 @@ bin/jsdr.jar: $(CLASSES) JSDR.MF
 # Dependencies - there must be a better way..
 $(BINS):
 	cp -p $(DEPS) bin
-	cp -p $(LIBFCD) bin
-	ln -s $(notdir $(LIBFCD)) bin/$(L64FCD)
 
 # Special order-only dependancy, just ensures bin target is built before classes and deps
 bin:
