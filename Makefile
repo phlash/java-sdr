@@ -5,9 +5,10 @@ OUT=bin
 # JTransforms now lives in a sane repository, we could switch to Maven for builds...
 JTRANS=https://repo1.maven.org/maven2/edu/emory/mathcs/JTransforms/2.4/JTransforms-2.4.jar
 # Finally: a cross-platform HID API for Java, only older forks in Maven as far as I can find..
-HIDAPI=https://github.com/nyholku/purejavahidapi/raw/master/bin/purejavahidapi.jar
-JNALIB=https://github.com/nyholku/purejavahidapi/raw/master/lib/jna-5.5.0.jar
-JNAPLT=https://github.com/nyholku/purejavahidapi/raw/master/lib/jna-platform-5.5.0.jar
+# NB: linking to a specific tree version, hence the fugly links :)
+HIDAPI=https://github.com/nyholku/purejavahidapi/raw/f769fcddf62503cff554e646587c92350ca664e5/bin/purejavahidapi.jar
+JNALIB=https://github.com/nyholku/purejavahidapi/raw/f769fcddf62503cff554e646587c92350ca664e5/lib/jna-5.5.0.jar
+JNAPLT=https://github.com/nyholku/purejavahidapi/raw/f769fcddf62503cff554e646587c92350ca664e5/lib/jna-platform-5.5.0.jar
 #JNALIB=/usr/share/java/jna.jar
 #JNAPLT=/usr/share/java/jna-platform.jar
 #JNALIB=../jna-4.1.0.jar
@@ -22,9 +23,6 @@ CLASSES= \
 	FUNcubeBPSKDemod.class \
 	FECDecoder.class \
 	FCD.class 
-#	FCDlinux.class \
-#	FCDwindows.class \
-#	HIDwin32.class
 
 OUTCLS=$(addprefix $(OUT)/,$(CLASSES))
 TARGET=jsdr.jar
