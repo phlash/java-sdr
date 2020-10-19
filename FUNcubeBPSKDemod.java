@@ -129,7 +129,9 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			sinTab[n] = Math.sin(n*2.0*Math.PI/SINCOS_SIZE);
 			cosTab[n] = Math.cos(n*2.0*Math.PI/SINCOS_SIZE);
 		}
-		parent.regHotKey('t', "BPSK tuner");
+		parent.regHotKey('t', "BPSK coarse tuner");
+		parent.regHotKey('<', "BPSK tune -10Hz");
+		parent.regHotKey('>', "BPSK tune +10Hz");
 		parent.regHotKey('F', "Toggle FFT demod");
 		parent.regHotKey('H', "Toggle High signal tracker");
 		tuning = (double)jsdr.getIntConfig(name+"-"+CFG_TUNING, 12000);
@@ -555,8 +557,10 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 	public void hotKey(char c) {
 		if ('t'==c) {
 			tuning = freqDialog();
-			tuPhaseInc = 2.0*Math.PI*tuning/format.getSampleRate();
-			dmMaxCorr=0;
+		} else if ('>'==c) {
+			tuning += 10.0;
+		} else if ('<'==c) {
+			tuning -= 10.0;
 		} else if ('F'==c) {
 			doFFT = !doFFT;
 			jsdr.config.setProperty(name+"-"+CFG_DOFFT, doFFT ? "1" : "0");
@@ -564,6 +568,9 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			doUp = !doUp;
 			jsdr.config.setProperty(name+"-"+CFG_UPPER, doUp ? "1" : "0");
 		}
+		jsdr.config.setProperty(name+"-"+CFG_TUNING, ""+(int)tuning);
+		tuPhaseInc = 2.0*Math.PI*tuning/format.getSampleRate();
+		dmMaxCorr=0;
 	}
 	
 	private double freqDialog() {
@@ -571,7 +578,6 @@ public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
 			String tune = JOptionPane.showInputDialog(this, "Set tuning frequency",
 				"BPSK demodulator", JOptionPane.QUESTION_MESSAGE);
 			double r=Double.parseDouble(tune);
-			jsdr.config.setProperty(name+"-"+CFG_TUNING, ""+(int)r);
 			return r;
 		} catch (Exception e) {
 		}

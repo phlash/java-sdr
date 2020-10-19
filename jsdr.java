@@ -117,8 +117,13 @@ public class jsdr implements Runnable, MessageOut {
 		if (publish.getProperty("hotkey-"+c)==null) {
 			frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
 					KeyStroke.getKeyStroke(c), "Key");
-			if (desc!=null)
-				hotkeys.setText(hotkeys.getText() + c+ ' ' + desc + "<br/>");
+			if (desc!=null) {
+				String s = ""+c;
+				// escape HTML
+				if ('<'==c) s = "&lt;";
+				if ('>'==c) s = "&gt;";
+				hotkeys.setText(hotkeys.getText() + s+ ' ' + desc + "<br/>");
+			}
 			publish.setProperty("hotkey-"+c, ""+desc);
 		}
 	}
