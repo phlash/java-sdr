@@ -1,41 +1,70 @@
 FREQ=100000
 PWD=$(shell pwd)
-JTRANS=../jtransforms-2.3.jar
-JNALIB=/usr/share/java/jna.jar
-JNAPLT=/usr/share/java/jna-platform.jar
+# Where to put all the built objects and dependencies
+OUT=bin
+# JTransforms now lives in a sane repository, we could switch to Maven for builds...
+JTRANS=https://repo1.maven.org/maven2/edu/emory/mathcs/JTransforms/2.4/JTransforms-2.4.jar
+# Finally: a cross-platform HID API for Java, only older forks in Maven as far as I can find..
+HIDAPI=https://github.com/nyholku/purejavahidapi/raw/master/bin/purejavahidapi.jar
+JNALIB=https://github.com/nyholku/purejavahidapi/raw/master/lib/jna-5.5.0.jar
+JNAPLT=https://github.com/nyholku/purejavahidapi/raw/master/lib/jna-platform-5.5.0.jar
+#JNALIB=/usr/share/java/jna.jar
+#JNAPLT=/usr/share/java/jna-platform.jar
 #JNALIB=../jna-4.1.0.jar
 #JNAPLT=../jna-platform-4.1.0.jar
 
-CLASSES=bin/jsdr.class bin/phase.class bin/fft.class bin/demod.class bin/FUNcubeBPSKDemod.class bin/FECDecoder.class \
-	bin/FCD.class bin/FCDlinux.class bin/FCDwindows.class bin/HIDwin32.class
-DEPS=$(JTRANS) $(JNALIB) $(JNAPLT)
-BINS=$(addprefix bin/,$(notdir $(DEPS)))
+# Our built objects
+CLASSES= \
+	jsdr.class \
+	phase.class \
+	fft.class \
+	demod.class \
+	FUNcubeBPSKDemod.class \
+	FECDecoder.class \
+	FCD.class 
+#	FCDlinux.class \
+#	FCDwindows.class \
+#	HIDwin32.class
+
+OUTCLS=$(addprefix $(OUT)/,$(CLASSES))
+TARGET=jsdr.jar
+OUTTGT=$(OUT)/$(TARGET)
+
+# Sources to build
+SOURCES=$(subst .class,.java,$(CLASSES))
+
+# Generate class paths for compile and metafile
+DEPS=$(JTRANS) $(HIDAPI) $(JNALIB) $(JNAPLT)
+OUTDEPS=$(addprefix $(OUT)/,$(notdir $(DEPS)))
 SPACE := 
 SPACE += 
-COMPILE_CP=$(subst $(SPACE),:,$(DEPS))
+COMPILE_CP=$(subst $(SPACE),:,$(OUTDEPS))
 MF_CP=$(notdir $(DEPS))
 
-all: bin bin/jsdr.jar $(BINS)
+all: $(OUT) $(OUTDEPS) $(OUTTGT)
 
 clean:
 	rm -rf bin *~
 
-bin/jsdr.jar: $(CLASSES) JSDR.MF
-	sed -e 's^CLASSPATH^$(MF_CP)^' <JSDR.MF >bin/temp.mf
-	cd bin; jar cfm jsdr.jar temp.mf *.class
+.PHONY: clean
 
-# Dependencies - there must be a better way..
-$(BINS):
-	cp -p $(DEPS) bin
+# Target executable jar
+$(OUTTGT): $(OUTCLS) JSDR.MF
+	sed -e 's^CLASSPATH^$(MF_CP)^' <JSDR.MF >$(OUT)/temp.mf
+	cd $(OUT); jar cfm $(TARGET) temp.mf *.class
 
-# Special order-only dependancy, just ensures bin target is built before classes and deps
-bin:
+# NB: we compile all sources together here, since Javac works better like that!
+$(OUT)/%.class: %.java
+	javac -classpath .:$(COMPILE_CP) -d $(OUT) $(SOURCES)
+
+# Special dependancy, just ensures bin target is built before classes and deps
+$(OUT):
 	mkdir -p bin
 
-# Compile that java
-bin/%.class: %.java
-	javac -classpath .:$(COMPILE_CP) -d bin $<
+# Dependencies - there must be a better way..
+$(OUTDEPS):
+	@for u in $(DEPS); do wget -nv -P $(OUT) $$u; done
 
 # Try it!
 test: all
-	java -jar bin/jsdr.jar
+	java -jar $(OUT)/jsdr.jar

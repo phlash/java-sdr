@@ -28,7 +28,7 @@ import javax.swing.JTabbedPane;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
-public class jsdr implements Runnable {
+public class jsdr implements Runnable, MessageOut {
 
 	private static SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss: ");
 	public static Properties config;
@@ -358,7 +358,7 @@ public class jsdr implements Runnable {
 			frame.setTitle(frame.getTitle()+": "+dev);
 			if (dev.equals("FUNcube Dongle") || frc.equals("true")) {
 				// FCD in use, we can tune it ourselves..
-				fcd = FCD.getFCD();
+				fcd = FCD.getFCD(this);
 				while (FCD.FME_APP!=fcd.fcdGetMode()) {
 					statusMsg("FCD not present or not in app mode..");
 					try {
@@ -367,16 +367,16 @@ public class jsdr implements Runnable {
 				}
 				freq = getIntConfig(CFG_FREQ, 100000);
 				fcdSetFreq(freq);
-				statusMsg("FCD tuned ok");
 			}
 			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
 			int m;
 			for (m=0; m<mixers.length; m++) {
 				statusMsg("Mixer: " + mixers[m].getName() + " / " + mixers[m].getDescription());
+				Mixer mx = AudioSystem.getMixer(mixers[m]);
 				// NB: Linux puts the device name in description field, Windows in name field.. sheesh.
-				if (mixers[m].getDescription().indexOf(dev)>=0 ||
-				    mixers[m].getName().indexOf(dev)>=0) {
-					// Found mixer/device, try and get a capture line in specified format
+				if ((mixers[m].getDescription().indexOf(dev)>=0 ||
+				    mixers[m].getName().indexOf(dev)>=0) && mx.getTargetLineInfo().length>0) {
+					// Found mixer/device with target lines, try and get a capture line in specified format
 					try {
 						TargetDataLine line = (TargetDataLine) AudioSystem.getTargetDataLine(format, mixers[m]);
 						line.open(format, bufsize);
@@ -391,7 +391,7 @@ public class jsdr implements Runnable {
 			}
 		}
 		if (audio!=null) {
-			statusMsg("Audio from: " + dev);
+			statusMsg("Audio from: " + dev + "@" + format.getSampleRate());
 			try {
 				// Use a buffer large enough to produce ~10Hz refresh rate.
 				byte[] tmp = new byte[bufsize];
@@ -560,4 +560,10 @@ public class jsdr implements Runnable {
 		public void newBuffer(ByteBuffer buf);
 		public void hotKey(char c);
 	}
+}
+
+// Interface implemented by message output components (us!)
+interface MessageOut {
+	public void logMsg(String s);
+	public void statusMsg(String s);
 }
