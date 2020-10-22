@@ -7,6 +7,8 @@
 // Author: Phil Ashby, based on previous work by Howard Long (G6LVB)
 // and Duncan Hills.
 
+package com.ashbysoft.java_sdr;
+
 import java.awt.Color;
 import java.awt.Graphics;
 import java.nio.ByteBuffer;
@@ -17,7 +19,7 @@ import javax.swing.JPanel;
 
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
-public class FUNcubeBPSKDemod extends JPanel implements jsdr.JsdrTab {
+public class FUNcubeBPSKDemod extends JPanel {
 
 	private static final int DOWN_SAMPLE_FILTER_SIZE = 27;
 	private static final double[] dsFilter = {

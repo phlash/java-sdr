@@ -1,3 +1,3 @@
-Main-Class: jsdr
+Main-Class: PKG.jsdr
 Author: Phil Ashby
 Class-Path: CLASSPATH

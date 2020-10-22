@@ -1,3 +1,5 @@
+package com.ashbysoft.java_sdr;
+
 // Demodulate AM or FM from sample stream
 
 // Integrate with spectrum display to allow graphical selection of filter band
@@ -21,7 +23,7 @@ import javax.swing.ButtonGroup;
 import javax.swing.JComboBox;
 
 @SuppressWarnings("serial")
-public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runnable {
+public class demod extends JPanel implements ActionListener, Runnable {
 
 	private jsdr parent;
 	private AudioFormat fmt, aud;

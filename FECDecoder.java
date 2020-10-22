@@ -8,6 +8,8 @@
 // Author: Phil Ashby, based on previous work by Howard Long (G6LVB)
 // Duncan Hills, Phil Karn (KA9Q) and J R Miller
 
+package com.ashbysoft.java_sdr;
+
 public class FECDecoder {
 	// Reed-Solomon decoder constants
 	private static final int NN = 255;

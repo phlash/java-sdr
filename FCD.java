@@ -21,6 +21,8 @@
 // FUNcube Dongle interface, uses PureJavaHidApi for control & Javax.sound for
 // audio (aka I/Q) samples
 
+package com.ashbysoft.java_sdr;
+
 import java.io.FileOutputStream;
 import java.io.IOException;
 
@@ -89,7 +91,7 @@ public class FCD implements InputReportListener {
 		if (response!=null) {
 			String err = String.format("FCD: HID report receive overrun: Path=%s, reportID=%d",
 				source.getHidDeviceInfo().getPath(), reportID);
-			msgout.statusMsg(err);
+			logger.statusMsg(err);
 			System.err.println(err);
 			return;
 		}
@@ -99,17 +101,17 @@ public class FCD implements InputReportListener {
 	}
 
 	// Private constructor (must use factory)
-	private MessageOut msgout;
+	private ILogger logger;
 	private HidDevice device = null;
-	private FCD(MessageOut m, HidDeviceInfo path) {
-		msgout = m;
-		msgout.logMsg(String.format("FCD: opening %s (%s)", path.getPath(), path.getProductString()));
+	private FCD(ILogger log, HidDeviceInfo path) {
+		logger = log;
+		logger.logMsg(String.format("FCD: opening %s (%s)", path.getPath(), path.getProductString()));
 		try {
 			device = PureJavaHidApi.openDevice(path);
 			device.setInputReportListener(this);
 		} catch (IOException ex) {
 			String err = String.format("FCD: Exception opening device: %s", ex.toString());
-			msgout.statusMsg(err);
+			logger.statusMsg(err);
 			System.err.println(err);
 		}
 	}
@@ -180,7 +182,7 @@ public class FCD implements InputReportListener {
 			}
 		}
 		if (err!=null) {
-			msgout.statusMsg(err);
+			logger.statusMsg(err);
 			System.err.println(err);
 		}
 		return rv;
@@ -228,7 +230,7 @@ public class FCD implements InputReportListener {
 			}
 		}
 		if (err!=null) {
-			msgout.statusMsg(err);
+			logger.statusMsg(err);
 			System.err.println(err);
 		}
 		return rv;
@@ -266,7 +268,7 @@ public class FCD implements InputReportListener {
 			}
 		}
 		if (err!=null) {
-			msgout.statusMsg(err);
+			logger.statusMsg(err);
 			System.err.println(err);
 		}
 		return rv;
@@ -274,8 +276,8 @@ public class FCD implements InputReportListener {
 
 	// Factory method
 	private static FCD cached = null;
-	public static FCD getFCD(MessageOut m) { return getFCD(m, null); }
-	public static synchronized FCD getFCD(MessageOut m, String partialPath) {
+	public static FCD getFCD(ILogger log) { return getFCD(log, null); }
+	public static synchronized FCD getFCD(ILogger log, String partialPath) {
 		if (cached!=null)
 			return cached;
 		// enumerate all HID devices, match partialPath if supplied, else first FUNcube Dongle
@@ -283,7 +285,7 @@ public class FCD implements InputReportListener {
 		List<HidDeviceInfo> devs = PureJavaHidApi.enumerateDevices();
 		HidDeviceInfo found = null;
 		for (HidDeviceInfo info: devs) {
-			m.logMsg(String.format("FCD: VID = 0x%04X PID = 0x%04X Manufacturer = %s Product = %s Path = %s, Serial = %s",
+			log.logMsg(String.format("FCD: VID = 0x%04X PID = 0x%04X Manufacturer = %s Product = %s Path = %s, Serial = %s",
 			info.getVendorId(),
 			info.getProductId(),
 			info.getManufacturerString(),
@@ -299,8 +301,14 @@ public class FCD implements InputReportListener {
 			}
 		}
 		if (found!=null)
-			cached = new FCD(m, found);
+			cached = new FCD(log, found);
 		return cached;
+	}
+	public static synchronized void dropFCD() {
+		if (cached!=null) {
+			cached.device.close();
+			cached = null;
+		}
 	}
 
 	// Audio interface: returns a javax.sound.sampled.TargetDataLine suitable for recording I/Q data.
@@ -312,10 +320,10 @@ public class FCD implements InputReportListener {
 			Mixer mix = AudioSystem.getMixer(mixers[m]);
 			// Test for a FUNcube Dongle, unfortunately by string matching - thanks Java..
 			// addendum: Linux puts the USB name in description field, Windows in name field.. sheesh.
-			msgout.logMsg("FCD: mixer: (" + mix.getClass().getName() + "): " + mixers[m].getDescription() + '/' + mixers[m].getName());
+			logger.logMsg("FCD: mixer: (" + mix.getClass().getName() + "): " + mixers[m].getDescription() + '/' + mixers[m].getName());
 			boolean hasLines = false;
 			for (Line.Info inf: mix.getTargetLineInfo()) {
-				msgout.logMsg(" - target line: " + inf.toString());
+				logger.logMsg(" - target line: " + inf.toString());
 				hasLines = true;
 			}
 			if ((mixers[m].getDescription().indexOf("FUNcube Dongle")>=0 ||
@@ -333,9 +341,10 @@ public class FCD implements InputReportListener {
 
 	// Test entry point
 	public static void main(String[] args) {
-		FCD test = FCD.getFCD(new MessageOut() {
+		FCD test = FCD.getFCD(new ILogger() {
 			public void logMsg(String s) { System.err.println(s); }
 			public void statusMsg(String s) { logMsg(s); }
+			public void alertMsg(String s) { logMsg(s); }
 		});
 		int mode = test.fcdGetMode();
 		int hwvr = test.fcdGetVersion();

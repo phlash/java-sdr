@@ -1,3 +1,5 @@
+package com.ashbysoft.java_sdr;
+
 import java.awt.Color;
 import java.awt.Graphics;
 import java.nio.ByteBuffer;
@@ -9,7 +11,7 @@ import javax.swing.JPanel;
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
 @SuppressWarnings("serial")
-public class fft extends JPanel implements jsdr.JsdrTab {
+public class fft extends JPanel {
 	public final String CFG_FFTHAM = "fft-hamming";
 	public final String CFG_FFTLOG = "fft-log";
 	public final String CFG_FFTGAIN= "fft-gain";
