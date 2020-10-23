@@ -3,6 +3,16 @@
 // publish and logger interfaces.
 package com.ashbysoft.java_sdr;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.util.Properties;
+import java.util.Calendar;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.text.SimpleDateFormat;
+import java.lang.reflect.Method;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.event.ActionListener;
@@ -11,20 +21,11 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.Properties;
-import java.util.Calendar;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.text.SimpleDateFormat;
-import java.lang.reflect.Method;
-
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeEvent;
 import javax.swing.AbstractAction;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JFrame;
 import javax.swing.JMenuBar;
 import javax.swing.JMenu;
@@ -40,47 +41,39 @@ import javax.swing.SwingUtilities;
 import javax.swing.BorderFactory;
 import javax.swing.border.BevelBorder;
 
-public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener {
+public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener, PropertyChangeListener {
 
-	private static SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss: ");
-	public static final String CFG_VERSION = "version";
-	public static final String CFG_TITLE = "title";
-	public static final String CFG_WIDTH = "width";
-	public static final String CFG_HEIGHT= "height";
-	public static final String CFG_AUDDEV= "audio-device";
-	public static final String CFG_AUDRAT= "audio-rate";
-	public static final String CFG_AUDBIT= "audio-bits";
-	public static final String CFG_AUDMOD= "audio-mode";
-	public static final String CFG_ICORR = "i-correction";
-	public static final String CFG_QCORR = "q-correction";
-	public static final String CFG_FREQ  = "frequency";
-	public static final String CFG_FORCE = "force-fcd";
-	public static final String CFG_TAB = "tab-focus";
-	public static final String CFG_SPLIT = "split-position";
-	public static final String CFG_FUNCUBES = "funcube-demods";
-	public static final String CFG_WAVE = "wave-out";
-	public static final String CFG_VERB = "verbose";
+	private static final int m_ver = 2;
+	private static final String m_cfg = "jsdr.properties";
+	private static final String m_pfx = "jsdr-";
+	private static final String CFG_VERSION = m_pfx+"version";
+	private static final String CFG_TITLE = m_pfx+"title";
+	private static final String CFG_WIDTH = m_pfx+"width";
+	private static final String CFG_HEIGHT= m_pfx+"height";
+	private static final String CFG_FREQ  = m_pfx+"fcd-frequency";
+	private static final String CFG_TAB   = m_pfx+"tab-focus";
+	private static final String CFG_SPLIT = m_pfx+"split-position";
+	private static final String CFG_FCUBES= m_pfx+"funcube-demods";
+	private static final String CFG_VERB  = m_pfx+"verbose";
+
+	private Properties config;
+	private Properties publish;
+
+	private IAudio audio;
+	private FCD fcd;
+	private int freq;
 
 	protected JFrame frame;
 	protected JMenuBar menu;
 	protected JLabel status;
+	protected JLabel fcdtune;
 	protected JLabel scanner;
 	protected JLabel hotkeys;
 	protected JSplitPane split;
 	protected JTabbedPane tabs;
 	protected JPanel waterfall;
-	private Properties config;
-	private Properties publish;
 	private ArrayList<IPublishListener> listeners;
 	private HashMap<String, Method> actionMap;
-	private IAudio audio;
-	private int freq, lastfreq;
-	private File fscan;
-	private float lastMax;
-	private boolean done;
-	private boolean paused;
-	private String wave;
-	private FileOutputStream wout = null;
 
 	// IConfig
 	public String getConfig(String key, String def) {
@@ -94,10 +87,8 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			String val = config.getProperty(key);
 			if (val!=null)
 				return Integer.parseInt(val);
-			else
-				config.setProperty(key, String.valueOf(def));
-		} catch (Exception e) {
-		}
+		} catch (Exception e) {}	// Yes I know - but unparseable => use default
+		config.setProperty(key, String.valueOf(def));
 		return def;
 	}
 
@@ -109,15 +100,27 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		config.setProperty(key, String.valueOf(val));
 	}
 
+	private void saveConfig() {
+		try {
+			FileOutputStream cfo = new FileOutputStream(m_cfg);
+			setConfig(CFG_VERSION, "2");
+			config.store(cfo, "(Ashbysoft *) Java SDR");
+			cfo.close();
+		} catch (Exception e) {
+			statusMsg("Unable to save config: "+e.getMessage());
+		}
+	}
+
 	// IPublish
 	public String getPublish(String prop, String def) {
 		String val = publish.getProperty(prop, def);
+		publish.setProperty(prop, val);
 		return val;
 	}
 
 	public void setPublish(String prop, String val) {
-		publish.setProperty(prop, val);
-		synchronized(this) {
+		synchronized(publish) {
+			publish.setProperty(prop, val);
 			for (IPublishListener list: listeners) {
 				list.notify(prop, val);
 			}
@@ -138,15 +141,18 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 
 	// ILogger
 	public void alertMsg(String msg) {
-		JOptionPane.showMessageDialog(frame, msg, frame.getTitle(), JOptionPane.ERROR_MESSAGE);
+		if (frame!=null)
+			JOptionPane.showMessageDialog(frame, msg, frame.getTitle(), JOptionPane.ERROR_MESSAGE);
 		statusMsg(msg);
 	}
 
 	public void statusMsg(String msg) {
-		status.setText(msg);
+		if (status!=null)
+			status.setText(msg);
 		logMsg(msg);
 	}
 
+	private static SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss: ");
 	public void logMsg(String msg) {
 		if (getConfig(CFG_VERB, "false").equals("true")) {
 			String dat = sdf.format(Calendar.getInstance().getTime());
@@ -180,7 +186,8 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	}
 
 	// ActionListener - we choose to use reflection rather than a hard-coded
-	// case statement that 'knows' all the commands and methods to call...YMMV.
+	// case statement that 'knows' all the commands and methods to call...
+	// This is as close as Java comes to function pointeres... YMMV.
 	public void actionPerformed(ActionEvent e) {
 		String cmd = e.getActionCommand();
 		if (actionMap.containsKey(cmd)) {
@@ -202,31 +209,62 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		}
 	}
 
+	// PropertyChangedListener
+	public void propertyChange(PropertyChangeEvent e) {
+		if (e.getPropertyName().equals(JSplitPane.DIVIDER_LOCATION_PROPERTY)) {
+			JSplitPane src = (JSplitPane)e.getSource();
+			int loc = src.getDividerLocation()*100/src.getHeight();
+			setIntConfig(CFG_SPLIT, loc);
+			src.setResizeWeight(0.5);		// equal resizing after first draw
+		}
+	}
+
 	// Private constructor - there can be only one.
 	@SuppressWarnings("serial")
 	private jsdr(String[] args) {
+		// Create publish property map
+		publish= new Properties();
 		// Load config..
 		config = new Properties();
-		publish= new Properties();
 		try {
-			FileInputStream cfi = new FileInputStream("jsdr.properties");
+			FileInputStream cfi = new FileInputStream(m_cfg);
 			config.load(cfi);
 			cfi.close();
 		} catch (Exception e) {
 			System.err.println("Unable to load config, using defaults");
 		}
-		// Check for command line overrides
+		// Check config version - dump if not compatible
+		if (getIntConfig(CFG_VERSION, 0) != m_ver) {
+			System.err.println("Config versions differ, using defaults");
+			config.clear();
+		}
+		// Check for command line config overrides
+		String caud = null;
 		for (int i=0; i<args.length; i++) {
 			int o = args[i].indexOf('=');
-			if (o>0)
+			if (o>0) {
 				setConfig(args[i].substring(0,o), args[i].substring(o+1));
-			// TODO raw file URL support else if (args[i].startsWith("file:"))
-			//	setConfig(CFG_AUDDEV, args[i]);
+				logMsg("config override: "+args[i]);
+			}
+			else
+				caud = args[i];
 		}
 		// Create audio object
 		audio = new JavaAudio(this, this, this);
+		// Start immediately if command line audio device specified
+		if (caud!=null) {
+			if (!caud.startsWith("-run"))
+				audio.setAudioSource(caud);
+			audio.Start();
+		}
+
+		// Check/open FCD for tuning
+		fcd = FCD.getFCD(this);
+		freq = getIntConfig(CFG_FREQ, 435950);	// default FC-1 telmetry
+
+		// GUI creation..
 		// The main frame
-		frame = new JFrame(getConfig(CFG_TITLE, "Java SDR v0.2"));
+		frame = new JFrame(getConfig(CFG_TITLE, "(Ashbysoft *) Java SDR"));
 		frame.setSize(getIntConfig(CFG_WIDTH, 800), getIntConfig(CFG_HEIGHT, 600));
 		frame.setResizable(true);
 		// The top menu
@@ -236,25 +274,31 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// File menu
 		JMenu file = new JMenu("File");
 		file.setMnemonic(KeyEvent.VK_F);
-		JMenuItem item = new JMenuItem("Open wav..", KeyEvent.VK_O);
+		JMenuItem item = new JMenuItem("Open wav...", KeyEvent.VK_O);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-open-wav");
 		registerHandler(item.getActionCommand(), "openWav");
 		item.addActionListener(this);
 		file.add(item);
-		item = new JMenuItem("Open Device..", KeyEvent.VK_D);
+		item = new JMenuItem("Open Device...", KeyEvent.VK_D);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-open-dev");
 		registerHandler(item.getActionCommand(), "openDev");
 		item.addActionListener(this);
 		file.add(item);
-		item = new JMenuItem("Quit..", KeyEvent.VK_Q);
+		item = new JMenuItem("Quit/exit", KeyEvent.VK_Q);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-quit");
 		registerHandler(item.getActionCommand(), "quit");
 		item.addActionListener(this);
 		file.add(item);
 		menu.add(file);
+		// FCD menu item (at top level)
+		item = new JMenuItem("FCD Tune...", KeyEvent.VK_T);
+		item.setActionCommand("jsdr-fcd-tune");
+		registerHandler(item.getActionCommand(), "fcdDialog");
+		item.addActionListener(this);
+		menu.add(item);
 		// Help menu
 		JMenu help = new JMenu("Help");
 		help.setMnemonic(KeyEvent.VK_H);
@@ -272,16 +316,19 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// The top-bottom split
 		split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 		frame.add(split);
-		split.setResizeWeight(0.5);
 		split.setDividerSize(3);
-		//split.setDividerLocation((double)getIntConfig(CFG_SPLIT, 75)/100.0);
+		split.setResizeWeight((double)getIntConfig(CFG_SPLIT, 50)/100.0);
+		split.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, this);
 		// The tabbed display panes (in top)
 		tabs = new JTabbedPane(JTabbedPane.BOTTOM);
 		split.setTopComponent(tabs);
-		// The waterfall (in bottom)
-		waterfall = new JPanel(new BorderLayout());
-		waterfall.setBackground(Color.lightGray);
-		split.setBottomComponent(waterfall);
+		// The waterfall & status displays (in bottom)
+		JPanel sbottom = new JPanel(new BorderLayout());
+		sbottom.setBackground(Color.lightGray);
+		split.setBottomComponent(sbottom);
+		waterfall = new JPanel();
+		waterfall.setBackground(Color.green);
+		sbottom.add(waterfall, BorderLayout.CENTER);
 		// keyboard hotkeys
 /* TODO fix hotkeys		AbstractAction act = new AbstractAction() {
 			public void actionPerformed(ActionEvent e) {
@@ -359,10 +406,21 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		frame.getLayeredPane().getActionMap().put("Key", act);
 		controls.add(hotkeys, BorderLayout.CENTER); */
 
-		// status bar
+		// bevelled information box
+		Box infobar = new Box(BoxLayout.X_AXIS);
+		infobar.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED));
+		sbottom.add(infobar, BorderLayout.SOUTH);
+		// status text
 		status = new JLabel(frame.getTitle());
-		status.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED));
-		waterfall.add(status, BorderLayout.SOUTH);
+		infobar.add(status);
+		// spacer
+		infobar.add(Box.createGlue());
+		// FCD tuning info
+		fcdtune = new JLabel("FCD");
+		infobar.add(fcdtune);
+		// initial tuning
+		tuneFCD(freq);
+
 		// Temporary scanner info
 		// TODO scanner scanner = new JLabel("scan info..");
 		//controls.add(scanner, BorderLayout.NORTH);
@@ -391,9 +449,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		hotkeys.setText(hotkeys.getText()+"</html>"); */
 		// Done - show it!
 		frame.setVisible(true);
-		// Start audio thread
-		fscan = null;
-		done = false;
 	}
 
 	// Action handlers
@@ -414,23 +469,25 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			"Open Device",
 			JOptionPane.QUESTION_MESSAGE,
 			null,
-			audio.getAudioDevices(),
+			audio.getAudioSources(),
 			null);
 		if (selected!=null) {
 			statusMsg("open Dev: "+selected);
-			openAudio(selected.toString());
+			openAudio(selected);
 		}
 	}
 
-	private void openAudio(String thing) {
+	private void openAudio(Object src) {
 		audio.Stop();
-		audio.setAudioSource(thing);
+		if (src instanceof String)
+			audio.setAudioSource((String)src);
+		else
+			audio.setAudioSource((AudioSource)src);
 		audio.Start();
 	}
 
 	public void quit() {
-		if (wout!=null)
-			toggleWav();
+		audio.Stop();
 		saveConfig();
 		System.exit(0);
 	}
@@ -447,23 +504,34 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			frame.getTitle(), JOptionPane.INFORMATION_MESSAGE);
 	}
 
-	private int freqDialog() {
-		// TODO if (fcd!=null) {
+	public void tuneFCD(int f) {
+		if (fcd!=null) {
+			if (FCD.FME_APP==fcd.fcdAppSetFreqkHz(f)) {
+				fcdtune.setText("FCD:"+f+"kHz");
+				setIntConfig(CFG_FREQ, f);
+				freq = f;
+			}
+		} else {
+			fcdtune.setText("FCD: n/a");
+		}
+	}
+
+	public void fcdDialog() {
+		if (fcd!=null) {
 			try {
 				String tune = JOptionPane.showInputDialog(frame, "Please enter new frequency",
 					frame.getTitle(), JOptionPane.QUESTION_MESSAGE);
-				return Integer.parseInt(tune);
+				tuneFCD(Integer.parseInt(tune));
 			} catch (Exception e) {
 				statusMsg("Invalid frequency");
 			}
-		//} else {
-		//	statusMsg("Not an FCD, unable to tune");
-		//}
-		return -1;
+		} else {
+			statusMsg("Not an FCD, unable to tune");
+		}
 	}
-
+/*
 	private boolean confirmScan() {
-		//if (fcd!=null) {
+		if (fcd!=null) {
 			try {
 				String msg = (fscan!=null) ? "Stop scan?" : "Scan from here?";
 				int yn = JOptionPane.showConfirmDialog(frame, msg,
@@ -478,7 +546,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 					}
 				}
 			} catch (Exception e) {}
-		//}
+		}
 		return false;
 	}
 
@@ -517,25 +585,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			}
 		}
 	}
-
-	private void saveConfig() {
-		try {
-			FileOutputStream cfo = new FileOutputStream("jsdr.properties");
-			setConfig(CFG_VERSION, "2");
-			/*config.setProperty(CFG_WIDTH, String.valueOf(frame.getWidth()));
-			config.setProperty(CFG_HEIGHT, String.valueOf(frame.getHeight()));
-			config.setProperty(CFG_SPLIT, String.valueOf(split.getDividerLocation()*100/split.getHeight()));
-			config.setProperty(CFG_TAB, String.valueOf(tabs.getSelectedIndex()));
-			config.setProperty(CFG_ICORR, String.valueOf(ic));
-			config.setProperty(CFG_QCORR, String.valueOf(qc));
-			config.setProperty(CFG_FREQ, String.valueOf(freq));*/
-			config.store(cfo, "Java SDR V0.2");
-			cfo.close();
-		} catch (Exception e) {
-			statusMsg("Save oops: "+e);
-		}
-	}
-
+*/
 	public static void main(String[] args) {
 		// Get the UI up as soon as possible, we might need to display errors..
 		SwingUtilities.invokeLater(new Runnable() {

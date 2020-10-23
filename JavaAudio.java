@@ -27,6 +27,7 @@ public class JavaAudio implements Runnable, IAudio {
     private IPublish m_pub;
     private ILogger m_log;
     private AudioFormat m_af;
+    private AudioSource m_src;
     private int m_blen;
     private int m_ic;
     private int m_qc;
@@ -34,8 +35,6 @@ public class JavaAudio implements Runnable, IAudio {
     private String m_dev;
     private Thread m_thr;
     private boolean m_pau;
-    private FCD m_fcd;
-    private int m_freq;
 
     private ArrayList<IAudioHandler> m_hands;
 
@@ -65,14 +64,14 @@ public class JavaAudio implements Runnable, IAudio {
 		m_qc = m_cfg.getIntConfig(CFG_QCOR, 0);
         logMsg("ic="+m_ic+", qc="+m_qc);
 
-        // The input device
+        // The input device (by name)
         m_dev = m_cfg.getConfig(CFG_ADEV, "FUNcube Dongle");
         logMsg("dev="+m_dev);
 
 		// TODO: Raw recording file
 		m_wav = m_cfg.getConfig(CFG_WAVE, "");
         logMsg("wav="+m_wav);
-        logMsg("done");
+        logMsg("config done");
     }
 
     // IAudio
@@ -85,30 +84,35 @@ public class JavaAudio implements Runnable, IAudio {
             m_blen);
     }
 
-    public String[] getAudioDevices() {
-        ArrayList<String> res = new ArrayList<String>();
+    public AudioSource[] getAudioSources() {
+        ArrayList<AudioSource> srcs = new ArrayList<AudioSource>();
         Mixer.Info[] mixers = AudioSystem.getMixerInfo();
         for (int m=0; m<mixers.length; m++) {
             Mixer mx = AudioSystem.getMixer(mixers[m]);
             if (mx.getTargetLineInfo().length>0) {
-                res.add(mixers[m].getName()+'/'+mixers[m].getDescription());
-                logMsg("enumerted: "+res.get(res.size()-1));
+                srcs.add(new AudioSource(mixers[m].getName(), mixers[m].getDescription()));
+                logMsg("getAudioSources: "+srcs.get(srcs.size()-1));
             }
         }
-        return res.toArray(new String[res.size()]);
+        return srcs.toArray(new AudioSource[srcs.size()]);
     }
 
-    public String getAudioSource() {
-        return m_dev;
+    public AudioSource getAudioSource() {
+        return m_src;
     }
 
-    public void setAudioSource(String src) {
+    public void setAudioSource(String name) {
+        setAudioSource(findSource(name));
+    }
+
+    public void setAudioSource(AudioSource src) {
         synchronized(this) {
             if (m_thr!=null) {
                 m_log.statusMsg("Audio in use");
                 return;
             }
-            m_dev = src;
+            m_src = src;
+            m_cfg.setConfig(CFG_ADEV, src.toString());
         }
     }
 
@@ -162,65 +166,20 @@ public class JavaAudio implements Runnable, IAudio {
 	public void run() {
 		// Open the appropriate file/device..
 		AudioInputStream audio = null;
-        TargetDataLine line = null;
 		boolean isFile = false;
-		if (m_dev.startsWith("file:")) {
-			isFile = true;
-			File fin = new File(m_dev.substring(5));
-//TODO			frame.setTitle(frame.getTitle()+": "+fin);
-			if (fin.canRead()) {
-				try {
-					audio = AudioSystem.getAudioInputStream(fin);
-					// Check format
-					AudioFormat af = audio.getFormat();
-					if (!compareFormat(af, m_af)) {
-						audio.close();
-						audio = null;
-						m_log.alertMsg("Incompatible audio format: "+fin+": "+af);
-					}
-				} catch (Exception e) {}
-			} else {
-				m_log.statusMsg("Unable to open file: "+fin);
-			}
-		} else {
-//			frame.setTitle(frame.getTitle()+": "+dev);
-			if (m_dev.indexOf("FUNcube Dongle")>=0) {
-				// FCD in use, we can tune it ourselves..
-				m_fcd = FCD.getFCD(m_log);
-				while (FCD.FME_APP!=m_fcd.fcdGetMode()) {
-					m_log.statusMsg("FCD not present or not in app mode, retrying..");
-					try {
-						Thread.sleep(1000);
-					} catch(Exception e) {}
-				}
-				m_freq = m_cfg.getIntConfig(CFG_FCDF, 100000);
-				if (FCD.FME_APP!=m_fcd.fcdAppSetFreqkHz(m_freq))
-                    m_log.alertMsg("Unable to tune FCD");
-                else
-                    logMsg("FCD tuned @"+m_freq);
-			}
-			Mixer.Info[] mixers = AudioSystem.getMixerInfo();
-			int m;
-			for (m=0; m<mixers.length; m++) {
-                String mn = mixers[m].getName()+'/'+mixers[m].getDescription();
-				Mixer mx = AudioSystem.getMixer(mixers[m]);
-				// NB: Linux puts the device name in description field, Windows in name field.. sheesh.
-				if (mn.indexOf(m_dev)>=0 && mx.getTargetLineInfo().length>0) {
-					// Found mixer/device with target lines, try and get a capture line in specified format
-					try {
-						line = (TargetDataLine) AudioSystem.getTargetDataLine(m_af, mixers[m]);
-						line.open(m_af, m_blen);
-						line.start();
-						audio = new AudioInputStream(line);
-					} catch (Exception e) {
-						m_log.alertMsg("Unable to open audio device: "+m_dev+ ": "+e.getMessage());
-					}
-					break;
-				}
-			}
-		}
+        // no selected source - find one from config
+        if (null==m_src)
+            m_src = findSource(m_dev);
+        // check for file:<path> source
+        if (m_src.getName().startsWith("file:")) {
+            audio = openFile(m_src.getName().substring(5));
+            isFile = true;
+        // ..or open a device
+        } else {
+            audio = openDevice(m_src);
+        }
 		if (audio!=null) {
-			m_log.statusMsg("Audio from: " + m_dev + "@" + m_af.getSampleRate());
+			m_log.statusMsg("Audio from: " + m_src + "@" + m_af.getSampleRate());
 			try {
 				byte[] tmp = new byte[m_blen];
 				ByteBuffer buf = ByteBuffer.allocate(m_blen);
@@ -288,14 +247,6 @@ public class JavaAudio implements Runnable, IAudio {
 					}
 				}
                 audio.close();
-                if (!isFile) {
-                    line.stop();
-                    line.close();
-                }
-                if (m_fcd!=null) {
-                    FCD.dropFCD();
-                    m_fcd = null;
-                }
 			} catch (Exception e) {
 				m_log.statusMsg("Audio oops: "+Arrays.toString(e.getStackTrace()));
 			}
@@ -304,6 +255,66 @@ public class JavaAudio implements Runnable, IAudio {
 			m_log.statusMsg("No audio device opened");
         }
         m_log.statusMsg("Audio input done");
+    }
+
+    private AudioSource findSource(String part) {
+        // file:<path> part is always valid
+        if (part.startsWith("file:"))
+            return new AudioSource(part, "file");
+        for (AudioSource can : getAudioSources()) {
+            // check for full match, then partial in name or description
+            if (can.toString().equals(part))
+                return can;
+            if (can.getName().indexOf(part)>=0)
+                return can;
+            if (can.getDesc().indexOf(part)>=0)
+                return can;
+        }
+        return null;
+    }
+
+    private AudioInputStream openDevice(AudioSource src) {
+        Mixer.Info[] mixers = AudioSystem.getMixerInfo();
+        for (int m=0; m<mixers.length; m++) {
+            AudioSource can = new AudioSource(mixers[m].getName(), mixers[m].getDescription());
+            Mixer mx = AudioSystem.getMixer(mixers[m]);
+            // NB: Linux puts the device name in description field, Windows in name field.. sheesh.
+            if (can.equals(src) && mx.getTargetLineInfo().length>0) {
+                // Found mixer/device with target lines, try and get a capture line in specified format
+                try {
+                    TargetDataLine line = (TargetDataLine) AudioSystem.getTargetDataLine(m_af, mixers[m]);
+                    line.open(m_af, m_blen);
+                    line.start();
+                    return new AudioInputStream(line);
+                } catch (Exception e) {
+                    m_log.alertMsg("Unable to open audio device: "+src.toString()+ ": "+e.getMessage());
+                }
+                break;
+            }
+        }
+        return null;
+    }
+
+    private AudioInputStream openFile(String path) {
+        File fin = new File(path);
+        if (fin.canRead()) {
+            try {
+                AudioInputStream audio = AudioSystem.getAudioInputStream(fin);
+                // Check format
+                AudioFormat af = audio.getFormat();
+                if (!compareFormat(af, m_af)) {
+                    audio.close();
+                    audio = null;
+                    m_log.alertMsg("Incompatible audio format: "+fin+": "+af);
+                }
+                return audio;
+            } catch (Exception e) {
+                m_log.alertMsg("Unable to open file: " + e.getMessage());
+            }
+        } else {
+            m_log.statusMsg("Not readable: "+fin);
+        }
+        return null;
     }
 
 	private boolean compareFormat(AudioFormat a, AudioFormat b) {

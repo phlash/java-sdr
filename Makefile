@@ -19,6 +19,7 @@ CLASSES= \
 	IPublishListener.class \
 	ILogger.class \
 	AudioDescriptor.class \
+	AudioSource.class \
 	IAudio.class \
 	IAudioHandler.class \
 	IUIHost.class \

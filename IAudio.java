@@ -4,9 +4,10 @@ import java.nio.ByteBuffer;
 
 public interface IAudio {
     public AudioDescriptor getAudioDescriptor();
-    public String[] getAudioDevices();
-    public String getAudioSource();
-    public void setAudioSource(String dev);
+    public AudioSource[] getAudioSources();
+    public AudioSource getAudioSource();
+    public void setAudioSource(String name);
+    public void setAudioSource(AudioSource src);
     public void Start();
     public void Pause();
     public void Resume();
