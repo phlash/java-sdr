@@ -293,12 +293,17 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		item.addActionListener(this);
 		file.add(item);
 		menu.add(file);
-		// FCD menu item (at top level)
-		item = new JMenuItem("FCD Tune...", KeyEvent.VK_T);
+		// FCD menu
+		JMenu fmenu = new JMenu("FCD");
+		fmenu.setMnemonic(KeyEvent.VK_C);
+		item = new JMenuItem("Tune...", KeyEvent.VK_T);
 		item.setActionCommand("jsdr-fcd-tune");
 		registerHandler(item.getActionCommand(), "fcdDialog");
 		item.addActionListener(this);
-		menu.add(item);
+		fmenu.add(item);
+		menu.add(fmenu);
+		// spacer
+		menu.add(Box.createHorizontalGlue());
 		// Help menu
 		JMenu help = new JMenu("Help");
 		help.setMnemonic(KeyEvent.VK_H);
