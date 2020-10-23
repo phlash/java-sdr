@@ -296,9 +296,46 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// FCD menu
 		JMenu fmenu = new JMenu("FCD");
 		fmenu.setMnemonic(KeyEvent.VK_C);
-		item = new JMenuItem("Tune...", KeyEvent.VK_T);
-		item.setActionCommand("jsdr-fcd-tune");
+		item = new JMenuItem("Freq...", KeyEvent.VK_F);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, 0));
+		item.setActionCommand("jsdr-fcd-freq");
 		registerHandler(item.getActionCommand(), "fcdDialog");
+		item.addActionListener(this);
+		fmenu.add(item);
+		item = new JMenuItem("Tune:+1 kHz");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, 0));
+		item.setActionCommand("jsdr-fcd-plus1");
+		registerHandler(item.getActionCommand(), "fcdPlus1");
+		item.addActionListener(this);
+		fmenu.add(item);
+		item = new JMenuItem("Tune:+10 kHz");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("jsdr-fcd-plus10");
+		registerHandler(item.getActionCommand(), "fcdPlus10");
+		item.addActionListener(this);
+		fmenu.add(item);
+		item = new JMenuItem("Tune:+50 kHz");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, 0));
+		item.setActionCommand("jsdr-fcd-plus50");
+		registerHandler(item.getActionCommand(), "fcdPlus50");
+		item.addActionListener(this);
+		fmenu.add(item);
+		item = new JMenuItem("Tune:-1 kHz");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, 0));
+		item.setActionCommand("jsdr-fcd-sub1");
+		registerHandler(item.getActionCommand(), "fcdSub1");
+		item.addActionListener(this);
+		fmenu.add(item);
+		item = new JMenuItem("Tune:-10 kHz");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("jsdr-fcd-sub10");
+		registerHandler(item.getActionCommand(), "fcdSub10");
+		item.addActionListener(this);
+		fmenu.add(item);
+		item = new JMenuItem("Tune:-50 kHz");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("jsdr-fcd-sub50");
+		registerHandler(item.getActionCommand(), "fcdSub50");
 		item.addActionListener(this);
 		fmenu.add(item);
 		menu.add(fmenu);
@@ -509,7 +546,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			frame.getTitle(), JOptionPane.INFORMATION_MESSAGE);
 	}
 
-	public void tuneFCD(int f) {
+	private void tuneFCD(int f) {
 		if (fcd!=null) {
 			if (FCD.FME_APP==fcd.fcdAppSetFreqkHz(f)) {
 				fcdtune.setText("FCD:"+f+"kHz");
@@ -534,6 +571,13 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			statusMsg("Not an FCD, unable to tune");
 		}
 	}
+
+	public void fcdPlus1() { tuneFCD(freq+=1); }
+	public void fcdPlus10() { tuneFCD(freq+=10); }
+	public void fcdPlus50() { tuneFCD(freq+=50); }
+	public void fcdSub1() { tuneFCD(freq-=1); }
+	public void fcdSub10() { tuneFCD(freq-=10); }
+	public void fcdSub50() { tuneFCD(freq-=50); }
 /*
 	private boolean confirmScan() {
 		if (fcd!=null) {
