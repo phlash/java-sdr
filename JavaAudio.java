@@ -150,6 +150,24 @@ public class JavaAudio implements Runnable, IAudio {
         logMsg("stopped");
     }
 
+    public int getICorrection() {
+        return m_ic;
+    }
+
+    public int getQCorrection() {
+        return m_qc;
+    }
+
+    public void setICorrection(int i) {
+        m_ic = i;
+        m_cfg.setIntConfig(CFG_ICOR, m_ic);
+    }
+
+    public void setQCorrection(int q) {
+        m_qc = q;
+        m_cfg.setIntConfig(CFG_QCOR, m_qc);
+    }
+
     public void addHandler(IAudioHandler hand) {
         synchronized(m_hands) {
             m_hands.add(hand);
@@ -181,31 +199,57 @@ public class JavaAudio implements Runnable, IAudio {
 		if (audio!=null) {
 			m_log.statusMsg("Audio from: " + m_src + "@" + m_af.getSampleRate());
 			try {
-				byte[] tmp = new byte[m_blen];
+				byte[] raw = new byte[m_blen];
 				ByteBuffer buf = ByteBuffer.allocate(m_blen);
 				buf.order(m_af.isBigEndian() ?
 					ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
 				long otime = System.nanoTime();
 				while (m_thr!=null) {
 					long stime=System.nanoTime();
+                    long etime = stime;
+                    // Step#0: delay if reading from a file
+					if (isFile) {
+						int tot=(int)((etime-stime)/1000000);
+						Thread.sleep(tot<100 ? 100-tot : 0);
+                        // paused? go around..
+                        if (m_pau) {
+                            logMsg("paused (file)");
+                            continue;
+                        }
+					}
+                    // Step#1: raw byte read
 					int l=0, rds=0;
 /* TODO scanner					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
-						while (l<tmp.length) {
-							l+=audio.read(tmp, l, tmp.length-l);
+						while (l<raw.length) {
+							l+=audio.read(raw, l, raw.length-l);
 							++rds;
 						}
 						logMsg("audio reads (skip)="+rds);
 					} */
-					buf.clear();
 					l=rds=0;
-					while (l<tmp.length) {
-						l+=audio.read(tmp, l, tmp.length-l);
+					while (l<raw.length) {
+						l+=audio.read(raw, l, raw.length-l);
 						++rds;
 					}
 					long rtime=System.nanoTime();
-					buf.put(tmp);
+                    // paused? go around discarding data..
+                    if (m_pau) {
+                        logMsg("paused (device)");
+                        continue;
+                    }
+                    // Step#2: transfer to ByteBuffer, apply I/Q correction
+					buf.clear();
+					buf.put(raw);
+                    for (l=0; l<m_blen; l+=m_af.getFrameSize()) {
+                        for (int c=0; c<m_af.getChannels(); c++) {
+                            // TODO: support other than 16-bit samples!
+                            short s = buf.getShort(l+c*2);
+                            s += (short)(0==c ? m_ic : m_qc);
+                            buf.putShort(l+c*2, s);
+                        }
+                    }
 /* TODO wave out					if (wout!=null)
-						wout.write(tmp);
+						wout.write(raw);
 					long wtime=System.nanoTime(); */
 /* TODO scanner					if (fscan!=null) {		// Retune ASAP after each buffer..
 						if (freq<2000000) {
@@ -216,8 +260,9 @@ public class JavaAudio implements Runnable, IAudio {
 						}
 					} */
 					long ftime=System.nanoTime();
+                    // Step#3: feed the handlers
                     long[] ttimes = null;
-                    // lock handlers list while processing them!
+                    // NB: lock handlers list while processing them!
                     synchronized(m_hands) {
                         ttimes = new long[m_hands.size()];
                         for (int t=0; t<m_hands.size(); t++) {
@@ -226,7 +271,7 @@ public class JavaAudio implements Runnable, IAudio {
                             ttimes[t]=System.nanoTime();
                         }
                     }
-					long etime=System.nanoTime();
+					etime=System.nanoTime();
 					StringBuffer sb = new StringBuffer(
 //						(wout!=null?wave+":":"") +
 						"running (secs): ");
@@ -241,10 +286,6 @@ public class JavaAudio implements Runnable, IAudio {
 						sb.append(","+(ttimes[t]-ttimes[t-1]));
 					sb.append("/"+(etime-stime));
 					logMsg(sb.toString());
-					if (isFile) {
-						int tot=(int)((etime-stime)/1000000);
-						Thread.sleep(tot<100 ? 100-tot : 0);
-					}
 				}
                 audio.close();
 			} catch (Exception e) {

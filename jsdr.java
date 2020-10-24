@@ -60,12 +60,14 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	private Properties publish;
 
 	private IAudio audio;
+	private boolean paused;
 	private FCD fcd;
 	private int freq;
 
 	protected JFrame frame;
 	protected JMenuBar menu;
 	protected JLabel status;
+	protected JLabel iqcorr;
 	protected JLabel fcdtune;
 	protected JLabel scanner;
 	protected JLabel hotkeys;
@@ -293,6 +295,40 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		item.addActionListener(this);
 		file.add(item);
 		menu.add(file);
+		// Audio menu
+		JMenu aud = new JMenu("Audio");
+		aud.setMnemonic(KeyEvent.VK_A);
+		item = new JMenuItem("[Un]pause", KeyEvent.VK_P);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, 0));
+		item.setActionCommand("jsdr-pause");
+		registerHandler(item.getActionCommand(), "audioPause");
+		item.addActionListener(this);
+		aud.add(item);
+		item = new JMenuItem("Adj I: +1");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, 0));
+		item.setActionCommand("jsdr-adj-i+1");
+		registerHandler(item.getActionCommand(), "adjIPlus1");
+		item.addActionListener(this);
+		aud.add(item);
+		item = new JMenuItem("Adj I: -1");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("jsdr-adj-i-1");
+		registerHandler(item.getActionCommand(), "adjISub1");
+		item.addActionListener(this);
+		aud.add(item);
+		item = new JMenuItem("Adj Q: +1");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, 0));
+		item.setActionCommand("jsdr-adj-q+1");
+		registerHandler(item.getActionCommand(), "adjQPlus1");
+		item.addActionListener(this);
+		aud.add(item);
+		item = new JMenuItem("Adj Q: -1");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("jsdr-adj-q-1");
+		registerHandler(item.getActionCommand(), "adjQSub1");
+		item.addActionListener(this);
+		aud.add(item);
+		menu.add(aud);
 		// FCD menu
 		JMenu fmenu = new JMenu("FCD");
 		fmenu.setMnemonic(KeyEvent.VK_C);
@@ -373,36 +409,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		sbottom.add(waterfall, BorderLayout.CENTER);
 		// keyboard hotkeys
 /* TODO fix hotkeys		AbstractAction act = new AbstractAction() {
-			public void actionPerformed(ActionEvent e) {
-				char c = e.getActionCommand().charAt(0);
-				int f = -1;
-				if ('p'==c) {
-					paused = !paused;
-					synchronized(frame) {
-						frame.notify();
-					}
-				} else if ('i'==c)
-					ic+=1;
-				else if('I'==c)
-					ic-=1;
-				else if('q'==c)
-					qc+=1;
-				else if('Q'==c)
-					qc-=1;
-				else if('f'==c) {
-					f = freqDialog();
-				} else if('u'==c) {
-					f = freq+1;
-				} else if ('U'==c) {
-					f = freq+10;
-				} else if('d'==c) {
-					f = freq-1;
-				} else if ('D'==c) {
-					f = freq-10;
-				} else if ('s'==c) {
-					f = freq+50;
-				} else if ('S'==c) {
-					f = freq-50;
 				} else if ('@'==c) {
 					if (confirmScan()) {
 						f = freq;
@@ -415,38 +421,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 					if (o instanceof JsdrTab) {
 						((JsdrTab)o).hotKey(c);
 					}
-				}
-				if (f>=50000) {
-					fcdSetFreq(f);
-				}
-				saveConfig();
-			}
-		};
-		hotkeys = new JLabel(
-			"<html><b>Hotkeys</b><br/>"+
-			"p pause/resume input<br/>"+
-			"i/I and q/Q adjust DC offsets (up/Down)<br/>" +
-			"u/U tune up by 1/10kHz, d/D tune down by 1/10kHz<br/>" +
-			"s/S step up/down by 50kHz<br/>" +
-			"f enter frequency, @ start/stop scan<br/>" +
-			"W toggle raw recording to: "+wave+"<br/>"
-		);
-		regHotKey('p', null);
-		regHotKey('f', null);
-		regHotKey('i', null);
-		regHotKey('I', null);
-		regHotKey('q', null);
-		regHotKey('Q', null);
-		regHotKey('u', null);
-		regHotKey('U', null);
-		regHotKey('d', null);
-		regHotKey('D', null);
-		regHotKey('s', null);
-		regHotKey('S', null);
-		regHotKey('@', null);
-		regHotKey('W', null);
-		frame.getLayeredPane().getActionMap().put("Key", act);
-		controls.add(hotkeys, BorderLayout.CENTER); */
+				} */
 
 		// bevelled information box
 		Box infobar = new Box(BoxLayout.X_AXIS);
@@ -457,8 +432,13 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		infobar.add(status);
 		// spacer
 		infobar.add(Box.createGlue());
+		// IQ corrections
+		iqcorr = new JLabel();
+		infobar.add(iqcorr);
+		// initial text
+		updateIQ();
 		// FCD tuning info
-		fcdtune = new JLabel("FCD");
+		fcdtune = new JLabel();
 		infobar.add(fcdtune);
 		// initial tuning
 		tuneFCD(freq);
@@ -526,6 +506,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		else
 			audio.setAudioSource((AudioSource)src);
 		audio.Start();
+		paused = false;
 	}
 
 	public void quit() {
@@ -534,28 +515,23 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		System.exit(0);
 	}
 
-	public void hotHelp() {
-		JOptionPane.showMessageDialog(frame,
-			"<html><h2>Hotkey Help</h2>Placeholder</html>",
-			frame.getTitle(), JOptionPane.INFORMATION_MESSAGE);
-	}
-
-	public void about() {
-		JOptionPane.showMessageDialog(frame,
-			"<html><h2>About Java-SDR</h2>Placeholder</html>",
-			frame.getTitle(), JOptionPane.INFORMATION_MESSAGE);
-	}
-
-	private void tuneFCD(int f) {
-		if (fcd!=null) {
-			if (FCD.FME_APP==fcd.fcdAppSetFreqkHz(f)) {
-				fcdtune.setText("FCD:"+f+"kHz");
-				setIntConfig(CFG_FREQ, f);
-				freq = f;
-			}
+	public void audioPause() {
+		if (paused) {
+			audio.Resume();
+			paused = false;
 		} else {
-			fcdtune.setText("FCD: n/a");
+			audio.Pause();
+			paused = true;
 		}
+		status.setText("Paused: " + paused);
+	}
+
+	public void adjIPlus1() { audio.setICorrection(audio.getICorrection()+1); updateIQ(); }
+	public void adjQPlus1() { audio.setQCorrection(audio.getQCorrection()+1); updateIQ(); }
+	public void adjISub1() { audio.setICorrection(audio.getICorrection()-1); updateIQ(); }
+	public void adjQSub1() { audio.setQCorrection(audio.getQCorrection()-1); updateIQ(); }
+	private void updateIQ() {
+		iqcorr.setText("| I/Q:"+audio.getICorrection()+'/'+audio.getQCorrection());
 	}
 
 	public void fcdDialog() {
@@ -578,6 +554,30 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	public void fcdSub1() { tuneFCD(freq-=1); }
 	public void fcdSub10() { tuneFCD(freq-=10); }
 	public void fcdSub50() { tuneFCD(freq-=50); }
+
+	private void tuneFCD(int f) {
+		if (fcd!=null) {
+			if (FCD.FME_APP==fcd.fcdAppSetFreqkHz(f)) {
+				fcdtune.setText("| FCD:"+f+"kHz");
+				setIntConfig(CFG_FREQ, f);
+				freq = f;
+			}
+		} else {
+			fcdtune.setText("| FCD: n/a");
+		}
+	}
+
+	public void hotHelp() {
+		JOptionPane.showMessageDialog(frame,
+			"<html><h2>Hotkey Help</h2>Placeholder</html>",
+			frame.getTitle(), JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	public void about() {
+		JOptionPane.showMessageDialog(frame,
+			"<html><h2>About Java-SDR</h2>Placeholder</html>",
+			frame.getTitle(), JOptionPane.INFORMATION_MESSAGE);
+	}
 /*
 	private boolean confirmScan() {
 		if (fcd!=null) {
