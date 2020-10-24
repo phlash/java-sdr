@@ -1,10 +1,7 @@
 package com.ashbysoft.java_sdr;
 
-import java.util.Iterator;
-import javax.swing.JMenuItem;
+import javax.swing.JPanel;
 
-public interface IUIComponent {
-    public Iterator<JMenuItem> getMenuItems();
-    public Iterator<Character> getHotKeys();
-    public void hotKey(char c);
+public abstract class IUIComponent extends JPanel {
+    public abstract void hotKey(char c);
 }

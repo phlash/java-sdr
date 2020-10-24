@@ -26,8 +26,8 @@ CLASSES= \
 	IUIComponent.class \
 	JavaAudio.class \
 	jsdr.class \
-	FCD.class 
-#	phase.class \
+	FCD.class \
+	phase.class
 #	fft.class \
 #	demod.class \
 #	FUNcubeBPSKDemod.class \

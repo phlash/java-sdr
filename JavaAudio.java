@@ -112,7 +112,7 @@ public class JavaAudio implements Runnable, IAudio {
                 return;
             }
             m_src = src;
-            m_cfg.setConfig(CFG_ADEV, src.toString());
+            m_cfg.setConfig(CFG_ADEV, src.getName());
         }
     }
 

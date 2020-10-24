@@ -163,15 +163,15 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	}
 
 	// IUIHost
-	public void addTabbedComponent(IUIComponent comp) {
-		// TODO: probably more work here around menu/hotkey setup & dependency injection
+	public void addMenu(JMenu sub) {
+		menu.add(sub);
 	}
 
-	public void remTabbedComponent(IUIComponent comp) {
-		// TODO: undo whatever add does above!
+	public void addHotKeys(char[] keys) {
+		statusMsg("addHotkeys() - not implemented yet :(");
 	}
 
-	// candidate for moving to addTabbedComponent
+	/* candidate for moving to addHotKeys
 	private void regHotKey(char c, String desc) {
 		if (publish.getProperty("hotkey-"+c)==null) {
 			frame.getLayeredPane().getInputMap(JPanel.WHEN_IN_FOCUSED_WINDOW).put(
@@ -185,7 +185,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			}
 			publish.setProperty("hotkey-"+c, ""+desc);
 		}
-	}
+	} */
 
 	// ActionListener - we choose to use reflection rather than a hard-coded
 	// case statement that 'knows' all the commands and methods to call...
@@ -269,10 +269,12 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		frame = new JFrame(getConfig(CFG_TITLE, "(Ashbysoft *) Java SDR"));
 		frame.setSize(getIntConfig(CFG_WIDTH, 800), getIntConfig(CFG_HEIGHT, 600));
 		frame.setResizable(true);
+
 		// The top menu
 		actionMap = new HashMap<String, Method>();
 		menu = new JMenuBar();
 		frame.setJMenuBar(menu);
+
 		// File menu
 		JMenu file = new JMenu("File");
 		file.setMnemonic(KeyEvent.VK_F);
@@ -295,6 +297,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		item.addActionListener(this);
 		file.add(item);
 		menu.add(file);
+
 		// Audio menu
 		JMenu aud = new JMenu("Audio");
 		aud.setMnemonic(KeyEvent.VK_A);
@@ -329,6 +332,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		item.addActionListener(this);
 		aud.add(item);
 		menu.add(aud);
+
 		// FCD menu
 		JMenu fmenu = new JMenu("FCD");
 		fmenu.setMnemonic(KeyEvent.VK_C);
@@ -375,8 +379,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		item.addActionListener(this);
 		fmenu.add(item);
 		menu.add(fmenu);
-		// spacer
-		menu.add(Box.createHorizontalGlue());
+
 		// Help menu
 		JMenu help = new JMenu("Help");
 		help.setMnemonic(KeyEvent.VK_H);
@@ -390,16 +393,18 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		registerHandler(item.getActionCommand(), "about");
 		item.addActionListener(this);
 		help.add(item);
-		menu.add(help);
+
 		// The top-bottom split
 		split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 		frame.add(split);
 		split.setDividerSize(3);
 		split.setResizeWeight((double)getIntConfig(CFG_SPLIT, 50)/100.0);
 		split.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, this);
+
 		// The tabbed display panes (in top)
 		tabs = new JTabbedPane(JTabbedPane.BOTTOM);
 		split.setTopComponent(tabs);
+
 		// The waterfall & status displays (in bottom)
 		JPanel sbottom = new JPanel(new BorderLayout());
 		sbottom.setBackground(Color.lightGray);
@@ -407,21 +412,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		waterfall = new JPanel();
 		waterfall.setBackground(Color.green);
 		sbottom.add(waterfall, BorderLayout.CENTER);
-		// keyboard hotkeys
-/* TODO fix hotkeys		AbstractAction act = new AbstractAction() {
-				} else if ('@'==c) {
-					if (confirmScan()) {
-						f = freq;
-						lastMax = -1;
-					}
-				} else if ('W'==c) {
-					toggleWav();
-				} else {
-					Object o = tabs.getComponentAt(tabs.getSelectedIndex());
-					if (o instanceof JsdrTab) {
-						((JsdrTab)o).hotKey(c);
-					}
-				} */
 
 		// bevelled information box
 		Box infobar = new Box(BoxLayout.X_AXIS);
@@ -443,31 +433,33 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// initial tuning
 		tuneFCD(freq);
 
-		// Temporary scanner info
-		// TODO scanner scanner = new JLabel("scan info..");
-		//controls.add(scanner, BorderLayout.NORTH);
 		// Close handler
 		frame.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
 				quit();
 			}
 		});
+
 		// The content in each tab
+		tabs.add("Phase", new phase(this, this, this, this, audio));
 		Color[] bks = {Color.cyan, Color.pink, Color.yellow};
-		for (int t=0; t<6; t++) {
+		for (int t=0; t<5; t++) {
 			JPanel tab = new JPanel();
 			tab.setBackground(bks[t%3]);
 			tabs.add("Tab#"+t, tab);
 		}
+		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
+
+		// spacer & help menu, after any tab menus
+		menu.add(Box.createHorizontalGlue());
+		menu.add(help);
 /* TODO tabs		tabs.add("Spectrum", new fft(this, format, bufsize));
-		tabs.add("Phase", new phase(this, format, bufsize));
 		tabs.add("Demodulator", new demod(this, format, bufsize));
 		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
 		for (int fc=0; fc<nfcs; fc++) {
 			String nm = "FUNcube"+fc;
 			tabs.add(nm, new FUNcubeBPSKDemod(nm, this, format, bufsize));
 		}
-		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
 		hotkeys.setText(hotkeys.getText()+"</html>"); */
 		// Done - show it!
 		frame.setVisible(true);

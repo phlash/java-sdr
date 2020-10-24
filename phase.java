@@ -1,25 +1,29 @@
 // Display signal phase diagram from FCD :)
 package com.ashbysoft.java_sdr;
 
-import javax.sound.sampled.AudioFormat;
+import java.util.Iterator;
 import java.nio.ByteBuffer;
 import java.awt.Graphics;
 import java.awt.Color;
-import javax.swing.JPanel;
 
 @SuppressWarnings("serial")
-public class phase extends JPanel {
+public class phase extends IUIComponent implements IAudioHandler {
 
-	private jsdr parent;
-	private AudioFormat fmt;
+	private ILogger logger;
+	private IUIHost host;
+	private IAudio audio;
 	private int[] dpy;
 	private int max=1;
 
-	public phase(jsdr p, AudioFormat af, int bufsize) {
-		parent = p;
-		fmt = af;
-		int sbytes = (af.getSampleSizeInBits()+7)/8;
-		dpy = new int[bufsize/sbytes/af.getChannels()*2];
+	public phase(IConfig cfg, IPublish pub, ILogger log,
+		IUIHost hst, IAudio aud) {
+		logger = log;
+		host = hst;
+		audio = aud;
+		AudioDescriptor ad = audio.getAudioDescriptor();
+		int sbytes = (ad.bits+7)/8;
+		dpy = new int[ad.blen/sbytes/ad.chns*2];
+		audio.addHandler(this);
 	}
 
 	public void paintComponent(Graphics g) {
@@ -41,9 +45,9 @@ public class phase extends JPanel {
 		g.drawLine(bx+5, by+size/2, bx+size-5, by+size/2);
 		// I/Q offsets
 		g.setColor(Color.RED);
-		g.drawString("I: "+parent.ic, bx+2, by+12);
+		g.drawString("I: "+audio.getICorrection(), bx+2, by+12);
 		g.setColor(Color.BLUE);
-		g.drawString("Q: "+parent.qc, bx+2, by+22);
+		g.drawString("Q: "+audio.getQCorrection(), bx+2, by+22);
 		long rtime = System.nanoTime();
 		// Data points from buffer..
 		g.setColor(Color.YELLOW);
@@ -52,19 +56,20 @@ public class phase extends JPanel {
 		}
 		g.drawString(""+max,getWidth()/2+2,12);
 		long etime = System.nanoTime();
-		parent.logMsg("phase render (nsecs): ret/pts: " + (rtime-stime) + "/" + (etime-rtime));
+		logger.logMsg("phase render (nsecs): ret/pts: " + (rtime-stime) + "/" + (etime-rtime));
 	}
 
-	public void newBuffer(ByteBuffer buf) {
+	public void receive(ByteBuffer buf) {
 		// Skip unless we are visible
 		if (!isVisible())
 			return;
 		// determine maxima of either axis for scaling
 		max=1;
+		AudioDescriptor ad = audio.getAudioDescriptor();
 		for(int s=0; s<dpy.length; s+=2) {
-			dpy[s] = buf.getShort()+parent.ic;
-			if (fmt.getChannels()>1)
-				dpy[s+1] = buf.getShort()+parent.qc;
+			dpy[s] = buf.getShort();
+			if (ad.chns>1)
+				dpy[s+1] = buf.getShort();
 			else
 				dpy[s+1] = 0;
 			max = Math.max(max, Math.abs(dpy[s]));
