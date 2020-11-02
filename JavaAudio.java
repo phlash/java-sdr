@@ -116,28 +116,28 @@ public class JavaAudio implements Runnable, IAudio {
         }
     }
 
-    public void Start() {
+    public void start() {
         synchronized(this) {
             if (m_thr!=null)
                 return;     // multiple start requests are harmless
-            Resume();
+            resume();
 		    m_thr = new Thread(this);
             m_thr.start();
         }
         logMsg("started");
     }
 
-    public void Pause() {
+    public void pause() {
         m_pau = true;
         logMsg("pause="+m_pau);
     }
 
-    public void Resume() {
+    public void resume() {
         m_pau = false;
         logMsg("pause="+m_pau);
     }
 
-    public void Stop() {
+    public void stop() {
         Thread thr = null;
         synchronized(this) {
             if (null==m_thr)

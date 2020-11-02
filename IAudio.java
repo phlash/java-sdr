@@ -8,10 +8,10 @@ public interface IAudio {
     public AudioSource getAudioSource();
     public void setAudioSource(String name);
     public void setAudioSource(AudioSource src);
-    public void Start();
-    public void Pause();
-    public void Resume();
-    public void Stop();
+    public void start();
+    public void pause();
+    public void resume();
+    public void stop();
     public int getICorrection();
     public int getQCorrection();
     public void setICorrection(int i);

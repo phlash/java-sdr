@@ -257,7 +257,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		if (caud!=null) {
 			if (!caud.startsWith("-run"))
 				audio.setAudioSource(caud);
-			audio.Start();
+			audio.start();
 		}
 
 		// Check/open FCD for tuning
@@ -492,27 +492,27 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	}
 
 	private void openAudio(Object src) {
-		audio.Stop();
+		audio.stop();
 		if (src instanceof String)
 			audio.setAudioSource((String)src);
 		else
 			audio.setAudioSource((AudioSource)src);
-		audio.Start();
+		audio.start();
 		paused = false;
 	}
 
 	public void quit() {
-		audio.Stop();
+		audio.stop();
 		saveConfig();
 		System.exit(0);
 	}
 
 	public void audioPause() {
 		if (paused) {
-			audio.Resume();
+			audio.resume();
 			paused = false;
 		} else {
-			audio.Pause();
+			audio.pause();
 			paused = true;
 		}
 		status.setText("Paused: " + paused);
