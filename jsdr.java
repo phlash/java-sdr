@@ -57,7 +57,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	private static final String CFG_VERB  = m_pfx+"verbose";
 
 	private Properties config;
-	private Properties publish;
+	private HashMap<String, Object> publish;
 
 	private IAudio audio;
 	private boolean paused;
@@ -114,15 +114,19 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	}
 
 	// IPublish
-	public String getPublish(String prop, String def) {
-		String val = publish.getProperty(prop, def);
-		publish.setProperty(prop, val);
-		return val;
+	public Object getPublish(String prop, Object def) {
+		synchronized(publish) {
+			Object val = publish.get(prop);
+			if (null==val)
+				val = def;
+			publish.put(prop, val);
+			return val;
+		}
 	}
 
-	public void setPublish(String prop, String val) {
+	public void setPublish(String prop, Object val) {
 		synchronized(publish) {
-			publish.setProperty(prop, val);
+			publish.put(prop, val);
 			for (IPublishListener list: listeners) {
 				list.notify(prop, val);
 			}
@@ -130,13 +134,13 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	}
 
 	public void listen(IPublishListener list) {
-		synchronized(this) {
+		synchronized(publish) {
 			listeners.add(list);
 		}
 	}
 
 	public void unlisten(IPublishListener list) {
-		synchronized(this) {
+		synchronized(publish) {
 			listeners.remove(list);
 		}
 	}
@@ -225,7 +229,8 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	@SuppressWarnings("serial")
 	private jsdr(String[] args) {
 		// Create publish property map
-		publish= new Properties();
+		publish= new HashMap<String, Object>();
+		listeners = new ArrayList<IPublishListener>();
 		// Load config..
 		config = new Properties();
 		try {
@@ -448,8 +453,9 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 
 		// The content in each tab
 		tabs.add("Phase", new phase(this, this, this, this, audio));
+		tabs.add("FFT", new fft(this, this, this, this, audio));
 		Color[] bks = {Color.cyan, Color.pink, Color.yellow};
-		for (int t=0; t<5; t++) {
+		for (int t=0; t<4; t++) {
 			JPanel tab = new JPanel();
 			tab.setBackground(bks[t%3]);
 			tabs.add("Tab#"+t, tab);
@@ -459,7 +465,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// spacer & help menu, after any tab menus
 		menu.add(Box.createHorizontalGlue());
 		menu.add(help);
-/* TODO tabs		tabs.add("Spectrum", new fft(this, format, bufsize));
+/* TODO tabs
 		tabs.add("Demodulator", new demod(this, format, bufsize));
 		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
 		for (int fc=0; fc<nfcs; fc++) {

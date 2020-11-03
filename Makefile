@@ -29,8 +29,8 @@ CLASSES= \
 	JavaAudio.class \
 	jsdr.class \
 	FCD.class \
-	phase.class
-#	fft.class \
+	phase.class \
+	fft.class 
 #	demod.class \
 #	FUNcubeBPSKDemod.class \
 #	FECDecoder.class \
