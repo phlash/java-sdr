@@ -278,16 +278,22 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// File menu
 		JMenu file = new JMenu("File");
 		file.setMnemonic(KeyEvent.VK_F);
-		JMenuItem item = new JMenuItem("Open wav...", KeyEvent.VK_O);
+		JMenuItem item = new JMenuItem("Open File...", KeyEvent.VK_O);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
-		item.setActionCommand("jsdr-open-wav");
-		registerHandler(item.getActionCommand(), "openWav");
+		item.setActionCommand("jsdr-open-file");
+		registerHandler(item.getActionCommand(), "openFile");
 		item.addActionListener(this);
 		file.add(item);
 		item = new JMenuItem("Open Device...", KeyEvent.VK_D);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-open-dev");
 		registerHandler(item.getActionCommand(), "openDev");
+		item.addActionListener(this);
+		file.add(item);
+		item = new JMenuItem("Close Audio...", KeyEvent.VK_C);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
+		item.setActionCommand("jsdr-close-audio");
+		registerHandler(item.getActionCommand(), "closeAudio");
 		item.addActionListener(this);
 		file.add(item);
 		item = new JMenuItem("Quit/exit", KeyEvent.VK_Q);
@@ -466,13 +472,13 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	}
 
 	// Action handlers
-	public void openWav() {
+	public void openFile() {
 		JFileChooser choose = new JFileChooser();
-		choose.setDialogTitle("Open WAV");
+		choose.setDialogTitle("Open Audio File");
 		int res = choose.showOpenDialog(frame);
 		if (JFileChooser.APPROVE_OPTION==res) {
 			File selected = choose.getSelectedFile();
-			statusMsg("open WAV: "+selected);
+			statusMsg("audio file: "+selected);
 			openAudio("file:"+selected);
 		}
 	}
@@ -480,13 +486,13 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	public void openDev() {
 		Object selected = JOptionPane.showInputDialog(frame,
 			"Please select an audio device",
-			"Open Device",
+			"Open Audio Device",
 			JOptionPane.QUESTION_MESSAGE,
 			null,
 			audio.getAudioSources(),
 			null);
 		if (selected!=null) {
-			statusMsg("open Dev: "+selected);
+			statusMsg("audio dev: "+selected);
 			openAudio(selected);
 		}
 	}
@@ -499,6 +505,11 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			audio.setAudioSource((AudioSource)src);
 		audio.start();
 		paused = false;
+	}
+
+	public void closeAudio() {
+		audio.stop();
+		statusMsg("audio stopped");
 	}
 
 	public void quit() {
