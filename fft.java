@@ -128,35 +128,12 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 		int t = (int)Math.ceil(s);
 		g.setColor(Color.DARK_GRAY);
 		if (dow)
-			g.drawString("step(win): "+s+"/"+t, 2, 24);
+			g.drawString("step(ham): "+s+"/"+t, 2, 24);
 		else
 			g.drawString("step(raw): "+s+"/"+t, 2, 24);
-		// Scale factor to fit -1 to 1 float sample data into 1/3 screen height
-		float h = (float)(getHeight()/6);
-		// Offset down screen
-		int o = getHeight()/6;
-		// I in top 1/3rd
-		g.setColor(Color.RED);
-		g.drawString("I: "+audio.getICorrection(), 2, 12);
-		int ly = 0;
-		for (int p=0; p<getWidth()-1; p++) {
-			int y = (int)(getMax(dat, 2*(int)(p*s), t)*h);
-			g.drawLine(p, ly+o, p+1, y+o);
-			ly = y;
-		}
-		long itime=System.nanoTime();
-		// Q in middle 1/3rd
-		g.setColor(Color.BLUE);
-		g.drawString("Q: "+audio.getQCorrection(), 2, getHeight()/3+12);
-		o = getHeight()/2;
-		ly = 0;
-		for (int p=0; p<getWidth()-1; p++) {
-			int y = (int)(getMax(dat, 2*(int)(p*s)+1, t)*h);
-			g.drawLine(p, ly+o, p+1, y+o);
-			ly = y;
-		}
-		long qtime=System.nanoTime();
-		// PSD and demod filter in lower 1/3rd (log scale if selected)
+		// Scale factor to fit -1 to 1 float sample data into screen height
+		float h = (float)(getHeight()/2);
+		// PSD and demod filter (log scale if selected)
 		int flo = tryParse(publish.getPublish("demod-filter-low", null), Integer.MIN_VALUE);
 		int fhi = tryParse(publish.getPublish("demod-filter-high", null), Integer.MAX_VALUE);
 		if (flo > Integer.MIN_VALUE && fhi < Integer.MAX_VALUE) {
@@ -164,23 +141,22 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			int wd = (adsc.chns<2) ? getWidth() : getWidth()/2;
 			int ts = (int)((float)flo/(adsc.rate/2)*(float)wd)+off;
 			int tw = (int)(((float)fhi-flo)/(adsc.rate/2)*(float)wd);
-			g.fillRect(ts, getHeight()*2/3, tw, getHeight());
+			g.fillRect(ts, 0, tw, getHeight());
 		}
 		g.setColor(Color.GREEN);
 		double pmax = psd[psd.length-1];
 		if (log)
-			g.drawString("PSD(log): "+Math.log10(pmax+1.0), 2, getHeight()*2/3+12);
+			g.drawString("PSD(log): "+Math.log10(pmax+1.0), 2, 12);
 		else
-			g.drawString("PSD(raw): "+pmax, 2, getHeight()*2/3+12);
-		o = getHeight();
-		h = (float)(auto ? (log ? (getHeight()/3)/Math.log10(pmax+1.0) : (getHeight()/3)/pmax) : gain);
-		g.drawString("gain("+(auto?'A':'-')+"):"+h, getWidth()-100, getHeight()*2/3+12);
-		ly = 0;
+			g.drawString("PSD(lin): "+pmax, 2, 12);
+		h = (float)(auto ? (log ? (getHeight())/Math.log10(pmax+1.0) : (getHeight())/pmax) : gain);
+		g.drawString("gain("+(auto?'A':'-')+"):"+h, getWidth()-100, 12);
+		int ly = 0;
 		for (int p=0; p<getWidth()-1; p++) {
 			// offset and wrap index to display negative freqs, then positives..
 			int i = (p+off) % getWidth();
 			int y = log ? (int)(Math.log10(getMax(psd, (int)(i*s), t/2)+1.0)*h) : (int)(getMax(psd, (int)(i*s), t/2)*h);
-			g.drawLine(p, o-ly, p+1, o-y);
+			g.drawLine(p, getHeight()-ly, p+1, getHeight()-y);
 			ly = y;
 //					if (2*(int)(p*s)<=spos && spos<=2*(int)((p+1)*s)) {
 //						g.drawString("Max", p, o-y-2);
@@ -196,7 +172,7 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			int cb = tryParse(publish.getPublish(nm, null), -1);
 			if (cb>0) {
 				int tc = (int)((float)cb/s)+off;
-				g.drawLine(tc, getHeight(), tc, getHeight()*2/3);
+				g.drawLine(tc, getHeight(), tc, 0);
 				g.drawString(nm+":"+cb, tc+5, getHeight()*5/6);
 				dbar = true;
 			}
@@ -205,7 +181,7 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			if (cb>0) {
 				int wd = (adsc.chns<2) ? getWidth() : getWidth()/2;
 				int tc = (int)((float)cb/(adsc.rate/2)*(float)wd)+off;
-				g.drawLine(tc, getHeight(), tc, getHeight()*2/3);
+				g.drawLine(tc, getHeight(), tc, 0);
 				g.drawString(nm+":"+cb, tc+5, getHeight()*5/6);
 				dbar = true;
 			}
@@ -213,10 +189,9 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 		long ttime=System.nanoTime();
 		// Reticle
 		g.setColor(Color.DARK_GRAY);
-		g.drawLine(0, getHeight()/3, getWidth(), getHeight()/3);
-		g.drawLine(0, getHeight()*2/3, getWidth(), getHeight()*2/3);
-		int my1 = getHeight()*2/3-2;
-		int my2 = getHeight()*2/3+2;
+		g.drawLine(0, 35, getWidth(), 35);
+		int my1 = 33;
+		int my2 = 37;
 		int mxs = getWidth()/20;
 		boolean abv = true;
 		for (int x=0; x<getWidth()-mxs; x+=mxs) {
@@ -227,14 +202,12 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			} else {
 				_mf = (adsc.rate * (double)x / (double)getWidth()) - adsc.rate/2.0;
 			}
-			g.drawString((int)_mf + "Hz", x, abv ? getHeight()*2/3-2 : getHeight()*2/3+12);
+			g.drawString((int)_mf + "Hz", x, abv ? my1 : my2+12);
 			abv = !abv;
 		}
 		long rtime=System.nanoTime();
-		logger.logMsg("fft: render (nsecs) i/q/psd/tun/ret: " +
-			(itime-stime) + "/" +
-			(qtime-itime) + "/" +
-			(ptime-qtime) + "/" +
+		logger.logMsg("fft: render (nsecs) psd/tune/ret: " +
+			(ptime-stime) + "/" +
 			(ttime-ptime) + "/" +
 			(rtime-ttime));
 	}

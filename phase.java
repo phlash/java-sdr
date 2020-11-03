@@ -29,11 +29,11 @@ public class phase extends IUIComponent implements IAudioHandler {
 	public void paintComponent(Graphics g) {
 		// time render
 		long stime = System.nanoTime();
-		// Get constraining dimension and box offsets
+		// Get constraining dimension and phase box offsets
 		int size = getWidth();
 		if (getHeight()<size)
 			size = getHeight();
-		int bx = (getWidth()-size)/2;
+		int bx = (getWidth()-size);
 		int by = (getHeight()-size)/2;
 		// Background..
 		g.setColor(Color.BLACK);
@@ -43,18 +43,52 @@ public class phase extends IUIComponent implements IAudioHandler {
 		g.drawOval(bx+10, by+10, size-20, size-20);
 		g.drawLine(bx+size/2, by+5, bx+size/2, by+size-5);
 		g.drawLine(bx+5, by+size/2, bx+size-5, by+size/2);
+		// I/Q separator (if visible)
+		if (bx>0) {
+			g.drawLine(0, getHeight()/2, bx, getHeight()/2);
+			g.drawLine(bx, 0, bx, getHeight());
+		}
 		// I/Q offsets
 		g.setColor(Color.RED);
-		g.drawString("I: "+audio.getICorrection(), bx+2, by+12);
+		g.drawString("I: "+audio.getICorrection(), 2, 12);
 		g.setColor(Color.BLUE);
-		g.drawString("Q: "+audio.getQCorrection(), bx+2, by+22);
+		g.drawString("Q: "+audio.getQCorrection(), 2, getHeight()/2+12);
 		long rtime = System.nanoTime();
 		// Data points from buffer..
-		g.setColor(Color.YELLOW);
+		double step = (double)(bx*2)/(double)dpy.length;
+		double pos = 0.0;
+		double h = (double)(getHeight()/2)/(double)max;
+		int lpix = 0;
+		int lsti = 0;
+		int lstq = 0;
+		int avgi = 0;
+		int avgq = 0;
+		int acnt = 0;
 		for(int s=0; s<dpy.length; s+=2) {
-			g.drawRect(bx+size/2+(dpy[s]*size/max), by+size/2-(dpy[s+1]*size/max), 0, 0);
+			avgi += dpy[s];
+			avgq += dpy[s+1];
+			acnt += 1;
+			pos += step;
+			int pix = (int)pos;
+			if (pix>lpix) {
+				// use IQ step scaling to sub-sample phase points - reduce drawing time!
+				g.setColor(Color.YELLOW);
+				g.drawRect(bx+size/2+(dpy[s]*size/max), by+size/2-(dpy[s+1]*size/max), 0, 0);
+				// We have moved one pixel, draw the I/Q lines
+				avgi = avgi/acnt;
+				avgq = avgq/acnt;
+				g.setColor(Color.RED);
+				g.drawLine(pix, (int)((double)lsti*h)+getHeight()/4, pix, (int)((double)avgi*h)+getHeight()/4);
+				g.setColor(Color.BLUE);
+				g.drawLine(pix, (int)((double)lstq*h)+getHeight()*3/4, pix, (int)((double)avgq*h)+getHeight()*3/4);
+				lpix = pix;
+				lsti = avgi;
+				lstq = avgq;
+				acnt = avgi = avgq = 0;
+			}
 		}
-		g.drawString(""+max,getWidth()/2+2,12);
+		g.setColor(Color.GREEN);
+		g.drawString("max: "+max,getWidth()-size/2+2,12);
 		long etime = System.nanoTime();
 		logger.logMsg("phase render (nsecs): ret/pts: " + (rtime-stime) + "/" + (etime-rtime));
 	}
