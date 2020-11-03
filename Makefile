@@ -6,6 +6,8 @@ OUT=bin
 PKG=com/ashbysoft/java_sdr
 # JTransforms now lives in a sane repository, we could switch to Maven for builds...
 JTRANS=https://repo1.maven.org/maven2/edu/emory/mathcs/JTransforms/2.4/JTransforms-2.4.jar
+# FLAC audio file support 'cause 10min IQ WAVs are nearly 500M, but a FLAC is nearer 250M..
+JFLAC=https://repo.spring.io/plugins-release/jflac/jflac/1.3/jflac-1.3.jar
 # Finally: a cross-platform HID API for Java, only older forks in Maven as far as I can find..
 # NB: linking to a specific tree version, hence the fugly links :)
 HIDAPI=https://github.com/nyholku/purejavahidapi/raw/f769fcddf62503cff554e646587c92350ca664e5/bin/purejavahidapi.jar
@@ -41,7 +43,7 @@ OUTTGT=$(OUT)/$(TARGET)
 SOURCES=$(subst .class,.java,$(CLASSES))
 
 # Generate class paths for compile and metafile
-DEPS=$(JTRANS) $(HIDAPI) $(JNALIB) $(JNAPLT)
+DEPS=$(JTRANS) $(JFLAC) $(HIDAPI) $(JNALIB) $(JNAPLT)
 OUTDEPS=$(addprefix $(OUT)/,$(notdir $(DEPS)))
 SPACE := 
 SPACE += 

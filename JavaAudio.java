@@ -344,6 +344,12 @@ public class JavaAudio implements Runnable, IAudio {
                 // Check format
                 AudioFormat af = audio.getFormat();
                 if (!compareFormat(af, m_af)) {
+                    // Try adding a format conversion..
+                    logMsg("Incompatible file format, attempting conversion");
+                    audio = AudioSystem.getAudioInputStream(m_af, audio);
+                    af = audio.getFormat();
+                }
+                if (!compareFormat(af, m_af)) {
                     audio.close();
                     audio = null;
                     m_log.alertMsg("Incompatible audio format: "+fin+": "+af);
