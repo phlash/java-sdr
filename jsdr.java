@@ -41,7 +41,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.BorderFactory;
 import javax.swing.border.BevelBorder;
 
-public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener, PropertyChangeListener {
+public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListener, ActionListener, PropertyChangeListener, Runnable {
 
 	private static final int m_ver = 2;
 	private static final String m_cfg = "jsdr.properties";
@@ -73,7 +73,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	protected JLabel hotkeys;
 	protected JSplitPane split;
 	protected JTabbedPane tabs;
-	protected JPanel waterfall;
+	private waterfall wfall;
 	private ArrayList<IPublishListener> listeners;
 	private HashMap<String, Method> actionMap;
 
@@ -191,6 +191,18 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		}
 	} */
 
+	// IPublishListener
+	public void notify(String key, Object val) {
+		// check for audio frame and repaint everything (out of audio thread!)
+		if("audio-frame".equals(key))
+			SwingUtilities.invokeLater(this);
+	}
+
+	// Runnable - in Swing thread context, forces paint of all components
+	public void run() {
+		frame.repaint();
+	}
+
 	// ActionListener - we choose to use reflection rather than a hard-coded
 	// case statement that 'knows' all the commands and methods to call...
 	// This is as close as Java comes to function pointeres... YMMV.
@@ -228,9 +240,10 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 	// Private constructor - there can be only one.
 	@SuppressWarnings("serial")
 	private jsdr(String[] args) {
-		// Create publish property map
+		// Create publish property map & listeners, add ourselves
 		publish= new HashMap<String, Object>();
 		listeners = new ArrayList<IPublishListener>();
+		listen(this);
 		// Load config..
 		config = new Properties();
 		try {
@@ -258,12 +271,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		}
 		// Create audio object
 		audio = new JavaAudio(this, this, this);
-		// Start immediately if command line audio device specified
-		if (caud!=null) {
-			if (!caud.startsWith("-run"))
-				audio.setAudioSource(caud);
-			audio.start();
-		}
 
 		// Check/open FCD for tuning
 		fcd = FCD.getFCD(this);
@@ -420,9 +427,8 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		JPanel sbottom = new JPanel(new BorderLayout());
 		sbottom.setBackground(Color.lightGray);
 		split.setBottomComponent(sbottom);
-		waterfall = new JPanel();
-		waterfall.setBackground(Color.green);
-		sbottom.add(waterfall, BorderLayout.CENTER);
+		wfall = new waterfall(this, this, audio);
+		sbottom.add(wfall, BorderLayout.CENTER);
 
 		// bevelled information box
 		Box infobar = new Box(BoxLayout.X_AXIS);
@@ -441,8 +447,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		// FCD tuning info
 		fcdtune = new JLabel();
 		infobar.add(fcdtune);
-		// initial tuning
-		tuneFCD(freq);
 
 		// Close handler
 		frame.addWindowListener(new WindowAdapter() {
@@ -475,6 +479,16 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 		hotkeys.setText(hotkeys.getText()+"</html>"); */
 		// Done - show it!
 		frame.setVisible(true);
+
+		// initial tuning
+		tuneFCD(freq);
+
+		// Start audio immediately if command line audio device specified
+		if (caud!=null) {
+			if (!caud.startsWith("-run"))
+				audio.setAudioSource(caud);
+			audio.start();
+		}
 	}
 
 	// Action handlers
@@ -509,6 +523,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, ActionListener
 			audio.setAudioSource((String)src);
 		else
 			audio.setAudioSource((AudioSource)src);
+		setPublish("audio-change", audio);
 		audio.start();
 		paused = false;
 	}

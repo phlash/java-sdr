@@ -271,6 +271,7 @@ public class JavaAudio implements Runnable, IAudio {
                             ttimes[t]=System.nanoTime();
                         }
                     }
+                    m_pub.setPublish("audio-frame", Boolean.TRUE);
 					etime=System.nanoTime();
 					StringBuffer sb = new StringBuffer(
 //						(wout!=null?wave+":":"") +

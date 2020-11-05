@@ -16,7 +16,7 @@ import javax.swing.KeyStroke;
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
 @SuppressWarnings("serial")
-public class fft extends IUIComponent implements IAudioHandler, ActionListener {
+public class fft extends IUIComponent implements IAudioHandler, IPublishListener, ActionListener {
 	public final String CFG_FFTHAM = "fft-hamming";
 	public final String CFG_FFTLOG = "fft-log";
 	public final String CFG_FFTGAIN= "fft-gain";
@@ -36,25 +36,15 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 	private boolean auto;
 	private int gain;
 	private AudioDescriptor adsc;
+	private boolean needpaint = true;
 
 	public fft(IConfig cfg, IPublish pub, ILogger lg,
 		IUIHost hst, IAudio aud) {
 		host = hst;
 		config = cfg;
 		logger = lg;
-		audio = aud;
 		publish = pub;
-		adsc = audio.getAudioDescriptor();
-		// Allocate buffers according to format..
-		int sbytes = (adsc.bits+7)/8;
-		dat = new double[adsc.blen/sbytes/adsc.chns*2];
-		spc = new double[dat.length];
-		psd = new double[dat.length/2+2];	// add two for spectral maxima values
-		win = new double[dat.length/2];
-		logger.logMsg("fft: dat.len="+dat.length);
-		// Calculate window coefficients (hamming)
-		for (int s=0; s<win.length; s++)
-			win[s] = (double) (0.54 - 0.46*Math.cos(2*Math.PI*s/win.length));
+		setup(aud);
 		// Build our menu
 		JMenu top = new JMenu("FFT");
 		top.setMnemonic(KeyEvent.VK_T);
@@ -89,7 +79,32 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 		log = config.getIntConfig(CFG_FFTLOG, 1)!=0 ? true : false;
 		auto = config.getIntConfig(CFG_FFTAUTO, 1)!=0 ? true : false;
 		gain = config.getIntConfig(CFG_FFTGAIN, 100);
-		// attach ourselves to audio data
+		// detect changes to audio
+		pub.listen(this);
+	}
+
+	public void notify(String key, Object val) {
+		// check for audio device change
+		if ("audio-change".equals(key)) {
+			setup((IAudio)val);
+		}
+	}
+
+	private synchronized void setup(IAudio aud) {
+		audio = aud;
+		adsc = audio.getAudioDescriptor();
+		// Allocate buffers according to format..
+		int sbytes = (adsc.bits+7)/8;
+		dat = new double[adsc.blen/sbytes/adsc.chns*2];
+		spc = new double[dat.length];
+		psd = new double[dat.length/2+2];	// add two for spectral maxima values
+		win = new double[dat.length/2];
+		logger.logMsg("fft: dat.len="+dat.length);
+		// Calculate window coefficients (hamming)
+		for (int s=0; s<win.length; s++)
+			win[s] = (double) (0.54 - 0.46*Math.cos(2*Math.PI*s/win.length));
+		// [re]attach ourselves to audio data
+		audio.remHandler(this);
 		audio.addHandler(this);
 	}
 
@@ -111,7 +126,10 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 		config.setIntConfig(CFG_FFTGAIN, gain);
 	}
 
-	protected void paintComponent(Graphics g) {
+	protected synchronized void paintComponent(Graphics g) {
+		// skip if not visible or doesn't need painting
+		if (!isVisible() || !needpaint)
+			return;
 		// time render
 		long stime=System.nanoTime();
 		// Clear to black
@@ -131,8 +149,6 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			g.drawString("step(ham): "+s+"/"+t, 2, 24);
 		else
 			g.drawString("step(raw): "+s+"/"+t, 2, 24);
-		// Scale factor to fit -1 to 1 float sample data into screen height
-		float h = (float)(getHeight()/2);
 		// PSD and demod filter (log scale if selected)
 		int flo = tryParse(publish.getPublish("demod-filter-low", null), Integer.MIN_VALUE);
 		int fhi = tryParse(publish.getPublish("demod-filter-high", null), Integer.MAX_VALUE);
@@ -149,18 +165,15 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			g.drawString("PSD(log): "+Math.log10(pmax+1.0), 2, 12);
 		else
 			g.drawString("PSD(lin): "+pmax, 2, 12);
-		h = (float)(auto ? (log ? (getHeight())/Math.log10(pmax+1.0) : (getHeight())/pmax) : gain);
+		float h = (float)(auto ? (log ? (getHeight())/Math.log10(pmax+1.0) : (getHeight())/pmax) : gain);
 		g.drawString("gain("+(auto?'A':'-')+"):"+h, getWidth()-100, 12);
 		int ly = 0;
 		for (int p=0; p<getWidth()-1; p++) {
 			// offset and wrap index to display negative freqs, then positives..
 			int i = (p+off) % getWidth();
-			int y = log ? (int)(Math.log10(getMax(psd, (int)(i*s), t/2)+1.0)*h) : (int)(getMax(psd, (int)(i*s), t/2)*h);
+			int y = log ? (int)(Math.log10(getMax(psd, (int)(i*s), t)+1.0)*h) : (int)(getMax(psd, (int)(i*s), t)*h);
 			g.drawLine(p, getHeight()-ly, p+1, getHeight()-y);
 			ly = y;
-//					if (2*(int)(p*s)<=spos && spos<=2*(int)((p+1)*s)) {
-//						g.drawString("Max", p, o-y-2);
-//					}
 		}
 		long ptime=System.nanoTime();
 		// BPSK tuning bar(s) (if available)
@@ -206,15 +219,16 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 			abv = !abv;
 		}
 		long rtime=System.nanoTime();
+		needpaint = false;
 		logger.logMsg("fft: render (nsecs) psd/tune/ret: " +
 			(ptime-stime) + "/" +
 			(ttime-ptime) + "/" +
 			(rtime-ttime));
 	}
-	// Find largest magnitude value in a array from offset o, length l, stride 2
+	// Find largest magnitude value in a array from offset o, length l
 	private double getMax(double[]a, int o, int l) {
 		double r = 0;
-		for (int i=o; i<o+l; i+=2) {
+		for (int i=o; i<o+l; i++) {
 			if (Math.abs(a[i])>r)
 				r=a[i];
 		}
@@ -230,7 +244,7 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 		return def;
 	}
 
-	public void receive(ByteBuffer buf) {
+	public synchronized void receive(ByteBuffer buf) {
 		// Convert to array of floats (scaled -1 to 1).. and apply windowing function if required
 		int div = 2<<(adsc.bits-1);
 		for (int s=0; s<dat.length; s+=2) {
@@ -265,9 +279,7 @@ public class fft extends IUIComponent implements IAudioHandler, ActionListener {
 		psd[psd.length-1] = m;
 		// publish for other displays
 		publish.setPublish("fft-psd", psd);
-		// Skip redraw unless we are visible
-		if (isVisible())
-			repaint();
+		needpaint = true;
 	}
 
 	public void hotKey(char c) {

@@ -7,13 +7,14 @@ import java.awt.Graphics;
 import java.awt.Color;
 
 @SuppressWarnings("serial")
-public class phase extends IUIComponent implements IAudioHandler {
+public class phase extends IUIComponent implements IAudioHandler, IPublishListener {
 
 	private ILogger logger;
 	private IUIHost host;
 	private IAudio audio;
 	private int[] dpy;
 	private int max=1;
+	private boolean needpaint = true;
 
 	public phase(IConfig cfg, IPublish pub, ILogger log,
 		IUIHost hst, IAudio aud) {
@@ -24,9 +25,28 @@ public class phase extends IUIComponent implements IAudioHandler {
 		int sbytes = (ad.bits+7)/8;
 		dpy = new int[ad.blen/sbytes/ad.chns*2];
 		audio.addHandler(this);
+		pub.listen(this);
 	}
 
-	public void paintComponent(Graphics g) {
+	public void notify(String key, Object val) {
+		// check for audio stream change
+		if ("audio-change".equals(key) &&
+		    val instanceof IAudio) {
+			AudioDescriptor ad = ((IAudio)val).getAudioDescriptor();
+			int sbytes = (ad.bits+7)/8;
+			synchronized(this) {
+				dpy = new int[ad.blen/sbytes/ad.chns*2];
+				audio = (IAudio)val;
+				audio.remHandler(this);
+				audio.addHandler(this);
+			}
+		}
+	}
+
+	public synchronized void paintComponent(Graphics g) {
+		// skip if not visible or doesn't need painting
+		if (!isVisible() || !needpaint)
+			return;
 		// time render
 		long stime = System.nanoTime();
 		// Get constraining dimension and phase box offsets
@@ -90,28 +110,28 @@ public class phase extends IUIComponent implements IAudioHandler {
 		g.setColor(Color.GREEN);
 		g.drawString("max: "+max,getWidth()-size/2+2,12);
 		long etime = System.nanoTime();
+		needpaint = false;
 		logger.logMsg("phase render (nsecs): ret/pts: " + (rtime-stime) + "/" + (etime-rtime));
 	}
 
 	public void receive(ByteBuffer buf) {
-		// Skip unless we are visible
-		if (!isVisible())
-			return;
-		// determine maxima of either axis for scaling
-		max=1;
-		AudioDescriptor ad = audio.getAudioDescriptor();
-		for(int s=0; s<dpy.length; s+=2) {
-			dpy[s] = buf.getShort();
-			if (ad.chns>1)
-				dpy[s+1] = buf.getShort();
-			else
-				dpy[s+1] = 0;
-			max = Math.max(max, Math.abs(dpy[s]));
-			max = Math.max(max, Math.abs(dpy[s+1]));
-		}		
-		// double maxima to get a nice graph..
-		max = Math.max(max*2,1);
-		repaint();
+		synchronized(this) {
+			// determine maxima of either axis for scaling
+			max=1;
+			AudioDescriptor ad = audio.getAudioDescriptor();
+			for(int s=0; s<dpy.length; s+=2) {
+				dpy[s] = buf.getShort();
+				if (ad.chns>1)
+					dpy[s+1] = buf.getShort();
+				else
+					dpy[s+1] = 0;
+				max = Math.max(max, Math.abs(dpy[s]));
+				max = Math.max(max, Math.abs(dpy[s+1]));
+			}		
+			// double maxima to get a nice graph..
+			max = Math.max(max*2,1);
+		}
+		needpaint = true;
 	}
 
 	public void hotKey(char c) {
