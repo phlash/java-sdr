@@ -28,6 +28,7 @@ CLASSES= \
 	IUIComponent.class \
 	JavaAudio.class \
 	jsdr.class \
+	waterfall.class \
 	FCD.class \
 	phase.class \
 	fft.class 
