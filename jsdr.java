@@ -458,10 +458,11 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		// The content in each tab
 		tabs.add("Phase", new phase(this, this, this, this, audio));
 		tabs.add("FFT", new fft(this, this, this, this, audio));
+		tabs.add("Demod", new demod(this, this, this, this, audio));
 		Color[] bks = {Color.cyan, Color.pink, Color.yellow};
-		for (int t=0; t<4; t++) {
+		for (int t=0; t<3; t++) {
 			JPanel tab = new JPanel();
-			tab.setBackground(bks[t%3]);
+			tab.setBackground(bks[t]);
 			tabs.add("Tab#"+t, tab);
 		}
 		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
@@ -470,7 +471,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		menu.add(Box.createHorizontalGlue());
 		menu.add(help);
 /* TODO tabs
-		tabs.add("Demodulator", new demod(this, format, bufsize));
 		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
 		for (int fc=0; fc<nfcs; fc++) {
 			String nm = "FUNcube"+fc;

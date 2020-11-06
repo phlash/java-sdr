@@ -31,8 +31,8 @@ CLASSES= \
 	waterfall.class \
 	FCD.class \
 	phase.class \
-	fft.class 
-#	demod.class \
+	fft.class \
+	demod.class 
 #	FUNcubeBPSKDemod.class \
 #	FECDecoder.class \
 

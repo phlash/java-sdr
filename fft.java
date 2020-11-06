@@ -37,6 +37,7 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 	private int gain;
 	private AudioDescriptor adsc;
 	private boolean needpaint = true;
+	private Color dgray = new Color(0x0f,0x0f,0x0f);
 
 	public fft(IConfig cfg, IPublish pub, ILogger lg,
 		IUIHost hst, IAudio aud) {
@@ -150,10 +151,10 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 		else
 			g.drawString("step(raw): "+s+"/"+t, 2, 24);
 		// PSD and demod filter (log scale if selected)
-		int flo = tryParse(publish.getPublish("demod-filter-low", null), Integer.MIN_VALUE);
-		int fhi = tryParse(publish.getPublish("demod-filter-high", null), Integer.MAX_VALUE);
+		int flo = (int)publish.getPublish("demod-filter-low", Integer.MIN_VALUE);
+		int fhi = (int)publish.getPublish("demod-filter-high", Integer.MAX_VALUE);
 		if (flo > Integer.MIN_VALUE && fhi < Integer.MAX_VALUE) {
-			g.setColor(Color.decode("0x0f0f0f"));
+			g.setColor(dgray);
 			int wd = (adsc.chns<2) ? getWidth() : getWidth()/2;
 			int ts = (int)((float)flo/(adsc.rate/2)*(float)wd)+off;
 			int tw = (int)(((float)fhi-flo)/(adsc.rate/2)*(float)wd);
@@ -182,7 +183,7 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 		for (int fc=0; dbar; fc++) {
 			dbar = false;
 			String nm = "FUNcube"+fc+"-bpsk-centre";
-			int cb = tryParse(publish.getPublish(nm, null), -1);
+			int cb = (int)publish.getPublish(nm, -1);
 			if (cb>0) {
 				int tc = (int)((float)cb/s)+off;
 				g.drawLine(tc, getHeight(), tc, 0);
@@ -190,7 +191,7 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 				dbar = true;
 			}
 			nm = "FUNcube"+fc+"-bpsk-tune";
-			cb = tryParse(publish.getPublish(nm, null), -1);
+			cb = (int)publish.getPublish(nm, -1);
 			if (cb>0) {
 				int wd = (adsc.chns<2) ? getWidth() : getWidth()/2;
 				int tc = (int)((float)cb/(adsc.rate/2)*(float)wd)+off;
@@ -233,15 +234,6 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 				r=a[i];
 		}
 		return r;
-	}
-	// Parse int or return default
-	private int tryParse(Object s, int def) {
-		try {
-			if (s instanceof String)
-				return Integer.parseInt((String)s);
-		} catch (NumberFormatException e) {
-		}
-		return def;
 	}
 
 	public synchronized void receive(ByteBuffer buf) {
