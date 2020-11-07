@@ -20,8 +20,11 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
+import javax.swing.JTextField;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
+
+import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
 @SuppressWarnings("serial")
 public class demod extends IUIComponent implements IAudioHandler, IPublishListener, ActionListener, Runnable {
@@ -53,22 +56,21 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 	// sample processing buffer
 	private int[] sam;
 	// FIR band-pass filter to select a section of the passband
-	private int[] fir;
+	private double[] fir;
 	private int fof;
 	private double[] wfir;
-	// FIR low-pass filter to remove images after down conversion
-	private int[] lpf;
-	private int lof;
-	private double[] wlpf;
 	// down conversion carrier absolute phase & phase increment
 	private double car;
-	private double phs;
+	private double phi;
 	// demodulated audio buffer
 	private ByteBuffer bbf;
 	// AGC state and FM demod state
 	private int max, avg, li, lq;
 	// dirty graphics
-	boolean needpaint = true;
+	private boolean needpaint = true;
+	// debug stuff
+	private double[] dbg;
+	private int dbgIdx;
 
 	public demod(IConfig cfg, IPublish pub, ILogger log,
 		IUIHost hst, IAudio aud) {
@@ -79,11 +81,9 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		audio = aud;
 		publish.listen(this);
 		// delay buffers for FIR filters (currently fixed order 20)
-		fir = new int[42];
-		lpf = new int[42];
+		fir = new double[42];
 		// weights for FIR filters
 		wfir = new double[21];
-		wlpf = new double[21];
 		// initial settings
 		mode = cfg.getIntConfig(CFG_DEMOD_MODE, MODE_OFF);
 		dofir = cfg.getIntConfig(CFG_DEMOD_FIRE, 0)>0 ? true : false;
@@ -126,9 +126,35 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		item.setActionCommand("demod-agc");
 		item.addActionListener(this);
 		top.add(item);
-		item = new JMenuItem("FIR On/Off", KeyEvent.VK_F);
+		item = new JMenuItem("FIR On/Off", KeyEvent.VK_I);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("demod-fir");
+		item.addActionListener(this);
+		top.add(item);
+
+		item = new JMenuItem("FIR Frequencies..", KeyEvent.VK_Q);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("demod-filter-dlg");
+		item.addActionListener(this);
+		top.add(item);
+		item = new JMenuItem("FIR Filter Up", KeyEvent.VK_RIGHT);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.CTRL_DOWN_MASK));
+		item.setActionCommand("demod-filter-up");
+		item.addActionListener(this);
+		top.add(item);
+		item = new JMenuItem("FIR Filter Down", KeyEvent.VK_LEFT);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.CTRL_DOWN_MASK));
+		item.setActionCommand("demod-filter-dn");
+		item.addActionListener(this);
+		top.add(item);
+		item = new JMenuItem("FIR Filter Widen", KeyEvent.VK_UP);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_UP, InputEvent.CTRL_DOWN_MASK));
+		item.setActionCommand("demod-filter-wide");
+		item.addActionListener(this);
+		top.add(item);
+		item = new JMenuItem("FIR Filter Narrow", KeyEvent.VK_DOWN);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, InputEvent.CTRL_DOWN_MASK));
+		item.setActionCommand("demod-filter-thin");
 		item.addActionListener(this);
 		top.add(item);
 		host.addMenu(top);
@@ -161,9 +187,21 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			doagc = !doagc;
 		else if ("demod-fir".equals(e.getActionCommand()))
 			dofir = !dofir;
+		else if ("demod-filter-dlg".equals(e.getActionCommand()))
+			filterDlg();
+		else if ("demod-filter-up".equals(e.getActionCommand()))
+			filterMove(500, 500);
+		else if ("demod-filter-dn".equals(e.getActionCommand()))
+			filterMove(-500, -500);
+		else if ("demod-filter-wide".equals(e.getActionCommand()))
+			filterMove(0, 500);
+		else if ("demod-filter-thin".equals(e.getActionCommand()))
+			filterMove(0, -500);
 		config.setIntConfig(CFG_DEMOD_MODE, mode);
 		config.setIntConfig(CFG_DEMOD_FIRE, dofir ? 1 : 0);
 		config.setIntConfig(CFG_DEMOD_AGCE, doagc ? 1 : 0);
+		config.setIntConfig(CFG_DEMOD_FLOW, flo);
+		config.setIntConfig(CFG_DEMOD_FHGH, fhi);
 	}
 
 	private synchronized void setup(IAudio aud) {
@@ -181,8 +219,11 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		// audio output buffer
 		bbf = ByteBuffer.allocate(sam.length*2);
 		bbf.order(ByteOrder.LITTLE_ENDIAN);
+		// fft debug buffer
+		dbg = new double[sam.length];
+		dbgIdx = 0;
 		// recalculate FIR weights
-		weights();
+		filterMove(0, 0);
 		// [re]attach ourselves to audio data
 		audio.remHandler(this);
 		audio.addHandler(this);
@@ -249,55 +290,81 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		}
 	}
 
+	private synchronized void filterMove(int lo, int hi) {
+		lo += flo;
+		hi += fhi;
+		if (lo<hi && lo>0 && hi<audio.getAudioDescriptor().rate/2) {
+			flo = lo;
+			fhi = hi;
+			weights();
+			publish.setPublish(CFG_DEMOD_FLOW, this.flo);
+			publish.setPublish(CFG_DEMOD_FHGH, this.fhi);
+		}
+	}
+
+	private void filterDlg() {
+		try {
+			JTextField lo = new JTextField(""+flo);
+			JTextField hi = new JTextField(""+fhi);
+			int opt = JOptionPane.showConfirmDialog(this,
+				new Object[] { "Low:", lo, "High:", hi },
+				"Selection filter pass band",
+				JOptionPane.OK_CANCEL_OPTION);
+			if (JOptionPane.OK_OPTION==opt) {
+				int l = Integer.parseInt(lo.getText());
+				int h = Integer.parseInt(hi.getText());
+				if (l<h && l>0 && h<audio.getAudioDescriptor().rate/2) {
+					flo = l;
+					fhi = h;
+					filterMove(0, 0);
+				}
+			}
+		} catch (Exception e) {
+			logger.statusMsg("Invalid frequencies");
+		}
+	}
+
 	// generate FIR band-pass filter weights according to:
 	// http://www.labbookpages.co.uk/audio/firWindowing.html
 	// using the bandpass equation, with a hamming window,
-	// then the low-pass image rejection filter weights,
-	// and finaly, the down conversion carrier phase shift/sample.
+	// plus the down conversion carrier phase shift/sample.
 	private void weights() {
 		// all-pass?
 		if (Integer.MIN_VALUE==flo) {
 			for (int i=0; i<wfir.length; i++)
-				wlpf[i]=wfir[i]=0;
+				wfir[i]=0;
 			wfir[(wfir.length-1)/2]=1;
-			wlpf[(wlpf.length-1)/2]=1;
 		// band-pass
 		} else {
 			// normalise frequencies to sample rate
 			int rate = audio.getAudioDescriptor().rate;
 			double nlo = (double)flo/rate;
 			double nhi = (double)fhi/rate;
-			double nlp = (double)(fhi-flo)/rate;
 			// filter order == length-1
 			int ord = wfir.length-1;
 			// calculate weights, apply hamming window
 			for (int n=0; n<wfir.length; n++) {
 				if (n==ord/2) {
 					wfir[n]=2*(nhi-nlo);
-					wlpf[n]=2*nlp;
 				} else {
 					wfir[n]=
 						 (Math.sin(2*Math.PI*nhi*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)))
 						-(Math.sin(2*Math.PI*nlo*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)));
-					wlpf[n]=
-						  Math.sin(2*Math.PI*nlp*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2));
 				}
 				wfir[n] *= 0.54 - 0.46*Math.cos(2*Math.PI*(double)n/(double)ord);
-				wlpf[n] *= 0.54 - 0.46*Math.cos(2*Math.PI*(double)n/(double)ord);
 			}
 			// calculate phase advance per input sample for down conversion carrier at flo
-			phs = 2*Math.PI*nlo;
+			phi = 2*Math.PI*nlo;
 			car = 0;
 		}
 		// clear previous samples (if any)
 		for (int i=0; i<fir.length; i++)
-			lpf[i]=fir[i]=0;
+			fir[i]=0;
 		fof=fir.length-2;
-		lof=lpf.length-2;
 	}
 
 	// Apply FIR filter to incoming sample stream
-	private int filter(int in[], int out[], int[] buf, double[] w, int o) {
+	private int filter(double in[], double out[], double[] buf, double[] w, int o) {
 		// put the current sample at start of delay buffer
 		buf[o]=in[0];
 		buf[o+1]=in[1];
@@ -309,8 +376,8 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			oi = oi+buf[ti]*w[i/2];
 			oq = oq+buf[ti+1]*w[i/2];
 		}
-		out[0] = (int)oi;
-		out[1] = (int)oq;
+		out[0] = oi;
+		out[1] = oq;
 		// move back in delay buffer
 		o=(o-2);
 		if (o<0) o=buf.length-2;
@@ -335,25 +402,29 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 				sam[s+1] = 0;
 			// apply selection filter?
 			if (dofir) {
-				//int[] sh = { 0, 0 };
-				//complex_gen(sh, mod);
-				int[] fs = { sam[s], sam[s+1] };
-				int[] os = { 0, 0 };
-				//complex_mod(fs, sh, os);
+				// band-pass to select region of interest
+				double[] fs = { (double)sam[s], (double)sam[s+1] };
+				double[] os = { 0, 0 };
 				fof=filter(fs, os, fir, wfir, fof);
-				// calculate immediate values of carrier I/Q from phase, advance carrier
+				// calculate immediate values of carrier I/Q from phase, retard carrier (neg freq)
 				double ci = Math.cos(car);
 				double cq = Math.sin(car);
-				car += phs;
-				if (car > 2*Math.PI)
-					car -= 2*Math.PI;
+				car -= phi;
+				if (car < 0)
+					car += 2*Math.PI;
 				// complex multiply to mix carrier and signal: (a+ib).(c+id) = ((ac-bd)+i(ad+bc))
-				fs[0]=(int)(os[0]*ci-os[1]*cq);
-				fs[1]=(int)(os[0]*cq+os[1]*ci);
-				// LPF to remove image from product
-				lof=filter(fs, os, lpf, wlpf, lof);
-				sam[s]=os[0];
-				sam[s+1]=os[1];
+				fs[0]=(os[0]*ci-os[1]*cq);
+				fs[1]=(os[0]*cq+os[1]*ci);
+				sam[s]=(int)fs[0];
+				sam[s+1]=(int)fs[1];
+				// save for debug display
+				dbg[dbgIdx]=fs[0];
+				dbg[dbgIdx+1]=fs[1];
+				dbgIdx = (dbgIdx+2)%dbg.length;
+			} else {
+				dbg[dbgIdx]=sam[s];
+				dbg[dbgIdx+1]=sam[s+1];
+				dbgIdx = (dbgIdx+2)%dbg.length;
 			}
 			// Demodulate
 			// ..Off
@@ -396,22 +467,6 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 	}
 
 	public void hotKey(char c) {
-		if ('b'==c) {
-			dofir = !dofir;
-		} else if ('n'==c) {
-			flo = +1000;
-			fhi = +2000;
-		} else if ('w'==c) {
-			flo = 0;
-			fhi = +10000;
-		} else if ('r'==c) {
-			flo = fhi = Integer.MIN_VALUE;
-		} else if ('a'==c) {
-			doagc = !doagc;
-		}
-		weights();
-		publish.setPublish(CFG_DEMOD_FLOW, this.flo);
-		publish.setPublish(CFG_DEMOD_FHGH, this.fhi);
 	}
 
 	// Output audio pump - blocks in write, may over or underrun input resulting in repeat/skip
@@ -429,6 +484,9 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 
 	private static final String[] s_mode = { "Off", "Raw", "AM", "FM" };
 	public void paintComponent(Graphics g) {
+		// skip if clean
+		if (!needpaint)
+			return;
 		// render time
 		long stime=System.nanoTime();
 		// render audio waveform buffer
@@ -436,31 +494,42 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		g.fillRect(0, 0, getWidth(), getHeight());
 		g.setColor(Color.GRAY);
 		double scale = (sam.length/2)/getWidth();
-		int ly=getHeight()/2;
+		int ly=getHeight()/4;
+		g.drawLine(0, ly, getWidth(), ly);
 		g.drawString("mode: "+s_mode[mode]+ ", scale: "+scale + ", agc: " + doagc + ", fir: "+dofir + ", filter("+flo+","+fhi+") max: "+max + " avg: " + avg, 2, 12);
 		g.setColor(Color.MAGENTA);
 		for (int x=0; x<getWidth()-1; x++) {
 			int i = (int)((double)x*scale);
-			int y = getHeight()/2 - getMax(sam, i*2, (int)scale)*getHeight()/16384;
+			int y = getHeight()/4 - getMax(sam, i*2, (int)scale)*getHeight()/32768;
 			g.drawLine(x, ly, x+1, y);
 			ly = y;
 		}
 		long atime=System.nanoTime();
-		// show filter weights..
-		g.setColor(Color.RED);
-		scale = (double)getWidth() / (double)21;
-		int lx=0;
-		ly=getHeight()/2;
-		for (int n=0; n<wfir.length; n++) {
-			int x = (int)((double)n*scale);
-			int y = getHeight()/2 - (int)(wfir[n]*(double)getHeight()/2);
-			g.drawLine(lx, ly, x, y);
-			g.drawString("("+n+","+String.format("%04f", wfir[n])+")", x, (n%2)==0 ? y-10 : y+10);
-			lx = x;
+		// FFT the debug buffer
+		DoubleFFT_1D fft = new DoubleFFT_1D(dbg.length/2);
+		fft.complexForward(dbg);
+		double[] psd = new double[dbg.length/2];
+		double max = 0.0;
+		int mo = 0;
+		for (int n=0; n<dbg.length; n+=2) {
+			psd[n/2] = Math.sqrt(dbg[n]*dbg[n]+dbg[n+1]*dbg[n+1]);
+			if (max<psd[n/2]) {
+				max=psd[n/2];
+				mo = n/2;
+			}
+		}
+		g.setColor(Color.GREEN);
+		double pi = ((double)psd.length/2)/((double)getWidth());
+		double ys = (getHeight()/2)/max;
+		ly = (int)(psd[0]*ys);
+		for (int n=1; n<getWidth(); n++) {
+			int i = (int)(pi*(double)n);
+			int y = (int)(getMax(psd,i,(int)pi)*ys);
+			g.drawLine(n-1, getHeight()-1-ly, n, getHeight()-1-y);
 			ly = y;
 		}
 		long etime=System.nanoTime();
-		logger.logMsg("demod render (nsecs) aud/fil: " + (atime-stime) + "/" + (etime-atime));
+		logger.logMsg("demod render (nsecs) aud/fft: " + (atime-stime) + "/" + (etime-atime));
 	}
 
 	// Find largest magnitude value in a array from offset o, length l
@@ -471,5 +540,13 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 				r=a[i];
 		}
 		return r;
+	}
+	private double getMax(double[] a, int o, int l) {
+		double m = 0;
+		for (int i=o; i<o+l; i++) {
+			if (m<a[i])
+				m=a[i];
+		}
+		return m;
 	}
 }
