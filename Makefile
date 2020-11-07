@@ -78,4 +78,4 @@ $(OUTDEPS):
 
 # Try it!
 test: all
-	java -jar $(OUT)/jsdr.jar
+	java -jar $(OUT)/jsdr.jar -run
