@@ -39,7 +39,8 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 	private static final int MODE_OFF = 0;
 	private static final int MODE_RAW = 1;
 	private static final int MODE_AM  = 2;
-	private static final int MODE_FM  = 3;
+	private static final int MODE_NFM = 3;
+	private static final int MODE_WFM = 4;
 
 	private IConfig config;
 	private IPublish publish;
@@ -116,9 +117,14 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		item.setActionCommand("demod-am");
 		item.addActionListener(this);
 		top.add(item);
-		item = new JMenuItem("Mode: FM", KeyEvent.VK_F);
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
-		item.setActionCommand("demod-fm");
+		item = new JMenuItem("Mode: nFM", KeyEvent.VK_N);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("demod-nfm");
+		item.addActionListener(this);
+		top.add(item);
+		item = new JMenuItem("Mode: wFM", KeyEvent.VK_W);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
+		item.setActionCommand("demod-wfm");
 		item.addActionListener(this);
 		top.add(item);
 		item = new JMenuItem("AGC On/Off", KeyEvent.VK_G);
@@ -181,8 +187,10 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			mode = MODE_RAW;
 		else if ("demod-am".equals(e.getActionCommand()))
 			mode = MODE_AM;
-		else if ("demod-fm".equals(e.getActionCommand()))
-			mode = MODE_FM;
+		else if ("demod-nfm".equals(e.getActionCommand()))
+			mode = MODE_NFM;
+		else if ("demod-wfm".equals(e.getActionCommand()))
+			mode = MODE_WFM;
 		else if ("demod-agc".equals(e.getActionCommand()))
 			doagc = !doagc;
 		else if ("demod-fir".equals(e.getActionCommand()))
@@ -394,6 +402,7 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		max = 1;
 		avg = 0;
 		AudioDescriptor ad = audio.getAudioDescriptor();
+		int fmgain = ad.rate / (MODE_NFM==mode ? 5000 : 75000);
 		for(int s=0; s<sam.length; s+=2) {
 			sam[s] = buf.getShort();
 			if (ad.chns>1)
@@ -440,9 +449,11 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 				sam[s] = (int)Math.sqrt(sam[s]*sam[s]+sam[s+1]*sam[s+1]);
 				avg = ((s/2)*avg+sam[s])/(s/2+1); 
 			// ..FM
-			} else if (MODE_FM==mode){
-				// http://kom.aau.dk/group/05gr506/report/node10.html#SECTION04615000000000000000
-				int v = (li*sam[s+1])-(lq*sam[s]); 
+			} else if (MODE_NFM==mode || MODE_WFM==mode) {
+				// https://web.archive.org/web/20140420135454/http://kom.aau.dk/group/05gr506/report/node10.html#SECTION04615000000000000000
+				// https://github.com/demantz/RFAnalyzer/blob/master/app/src/main/java/com/mantz_it/rfanalyzer/Demodulator.java
+				// apply post-demodulation gain depending on ratio of sample rate to modulation deviation
+				int v = ((li*sam[s+1])-(lq*sam[s]))/32768 * fmgain;
 				li = sam[s];
 				lq = sam[s+1];
 				sam[s] = v;
@@ -482,7 +493,7 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		}
 	}
 
-	private static final String[] s_mode = { "Off", "Raw", "AM", "FM" };
+	private static final String[] s_mode = { "Off", "Raw", "AM", "nFM", "wFM" };
 	public void paintComponent(Graphics g) {
 		// skip if clean
 		if (!needpaint)
