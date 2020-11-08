@@ -269,12 +269,21 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 			else
 				caud = args[i];
 		}
-		// Create audio object
-		audio = new JavaAudio(this, this, this);
-
 		// Check/open FCD for tuning
 		fcd = FCD.getFCD(this);
 		freq = getIntConfig(CFG_FREQ, 435950);	// default FC-1 telmetry
+		if (fcd!=null) {
+			// update sample rate for detected version of FCD
+			if (fcd.fcdGetVersion()==FCD.FCD_VERSION_2)
+				setIntConfig("audio-rate", 192000);
+			else
+				setIntConfig("audio-rate", 96000);
+			// read back current tuning freq (adjust for kHz)
+			freq = fcd.fcdAppGetFreq()/1000;
+		}
+
+		// Create audio object
+		audio = new JavaAudio(this, this, this);
 
 		// GUI creation..
 		// The main frame
@@ -396,6 +405,9 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		registerHandler(item.getActionCommand(), "fcdSub50");
 		item.addActionListener(this);
 		fmenu.add(item);
+		// disable if no FCD
+		if (null==fcd)
+			fmenu.setEnabled(false);
 		menu.add(fmenu);
 
 		// Help menu
@@ -572,19 +584,20 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		}
 	}
 
-	public void fcdPlus1() { tuneFCD(freq+=1); }
-	public void fcdPlus10() { tuneFCD(freq+=10); }
-	public void fcdPlus50() { tuneFCD(freq+=50); }
-	public void fcdSub1() { tuneFCD(freq-=1); }
-	public void fcdSub10() { tuneFCD(freq-=10); }
-	public void fcdSub50() { tuneFCD(freq-=50); }
+	public void fcdPlus1() { tuneFCD(freq+1); }
+	public void fcdPlus10() { tuneFCD(freq+10); }
+	public void fcdPlus50() { tuneFCD(freq+50); }
+	public void fcdSub1() { tuneFCD(freq-1); }
+	public void fcdSub10() { tuneFCD(freq-10); }
+	public void fcdSub50() { tuneFCD(freq-50); }
 
 	private void tuneFCD(int f) {
 		if (fcd!=null) {
-			if (FCD.FME_APP==fcd.fcdAppSetFreqkHz(f)) {
+			if (freq==f || FCD.OK==fcd.fcdAppSetFreqkHz(f)) {
 				fcdtune.setText("| FCD:"+f+"kHz");
 				setIntConfig(CFG_FREQ, f);
 				freq = f;
+				logMsg("jsdr: fcd tune to: "+freq);
 			}
 		} else {
 			fcdtune.setText("| FCD: n/a");

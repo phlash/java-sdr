@@ -28,7 +28,6 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 	private IAudio audio;
 	private IPublish publish;
 	private double[] dat;
-	private double[] spc;
 	private double[] psd;
 	private double[] win;
 	private boolean dow;
@@ -37,7 +36,7 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 	private int gain;
 	private AudioDescriptor adsc;
 	private boolean needpaint = true;
-	private Color dgray = new Color(0x0f,0x0f,0x0f);
+	private Color dgray = new Color(0x1f,0x1f,0x1f);
 
 	public fft(IConfig cfg, IPublish pub, ILogger lg,
 		IUIHost hst, IAudio aud) {
@@ -95,10 +94,8 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 		audio = aud;
 		adsc = audio.getAudioDescriptor();
 		// Allocate buffers according to format..
-		int sbytes = (adsc.bits+7)/8;
-		dat = new double[adsc.blen/sbytes/adsc.chns*2];
-		spc = new double[dat.length];
-		psd = new double[dat.length/2+2];	// add two for spectral maxima values
+		dat = new double[2*adsc.blen/adsc.size];// always allocate for two channels
+		psd = new double[dat.length/2+2];		// add two for spectral maxima values
 		win = new double[dat.length/2];
 		logger.logMsg("fft: dat.len="+dat.length);
 		// Calculate window coefficients (hamming)
@@ -137,20 +134,19 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 		g.setColor(Color.BLACK);
 		g.fillRect(0, 0, getWidth(), getHeight());
 		// Step size and FFT offset for resampling to screen size
-		float s = (float)(dat.length/2)/(float)getWidth();
+		float step = (float)(dat.length/2)/(float)getWidth();
 		int off = getWidth()/2;
 		// adjust step and offset if only single channel data
 		if (adsc.chns<2) {
-			s = s/2;
+			step = step/2;
 			off = 0;
 		}
-		int t = (int)Math.ceil(s);
 		g.setColor(Color.DARK_GRAY);
 		if (dow)
-			g.drawString("step(ham): "+s+"/"+t, 2, 24);
+			g.drawString("step(ham): "+step, 2, 24);
 		else
-			g.drawString("step(raw): "+s+"/"+t, 2, 24);
-		// PSD and demod filter (log scale if selected)
+			g.drawString("step(raw): "+step, 2, 24);
+		// demod filter (TODO: move to waterfall?)
 		int flo = (int)publish.getPublish("demod-filter-low", Integer.MIN_VALUE);
 		int fhi = (int)publish.getPublish("demod-filter-high", Integer.MAX_VALUE);
 		if (flo > Integer.MIN_VALUE && fhi < Integer.MAX_VALUE) {
@@ -172,12 +168,14 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 		for (int p=0; p<getWidth()-1; p++) {
 			// offset and wrap index to display negative freqs, then positives..
 			int i = (p+off) % getWidth();
-			int y = log ? (int)(Math.log10(getMax(psd, (int)(i*s), t)+1.0)*h) : (int)(getMax(psd, (int)(i*s), t)*h);
+			int y = log ?
+				(int)(Math.log10(getMax(psd, (int)(i*step), (int)step)+1.0)*h) :
+				(int)(getMax(psd, (int)(i*step), (int)step)*h);
 			g.drawLine(p, getHeight()-ly, p+1, getHeight()-y);
 			ly = y;
 		}
 		long ptime=System.nanoTime();
-		// BPSK tuning bar(s) (if available)
+		// BPSK tuning bar(s) (TODO: move to waterfall?)
 		boolean dbar = true;
 		g.setColor(Color.CYAN);
 		for (int fc=0; dbar; fc++) {
@@ -185,7 +183,7 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 			String nm = "FUNcube"+fc+"-bpsk-centre";
 			int cb = (int)publish.getPublish(nm, -1);
 			if (cb>0) {
-				int tc = (int)((float)cb/s)+off;
+				int tc = (int)((float)cb/step)+off;
 				g.drawLine(tc, getHeight(), tc, 0);
 				g.drawString(nm+":"+cb, tc+5, getHeight()*5/6);
 				dbar = true;
@@ -246,26 +244,28 @@ public class fft extends IUIComponent implements IAudioHandler, IPublishListener
 			else
 				dat[s+1] = 0;
 		}
-		// Copy to preserve original input
-		System.arraycopy(dat, 0, spc, 0, dat.length);
 		// FFT
-		DoubleFFT_1D fft = new DoubleFFT_1D(spc.length/2);
-		fft.complexForward(spc);
+		DoubleFFT_1D fft = new DoubleFFT_1D(dat.length/2);
+		fft.complexForward(dat);
 		// Calculate power spectral density (PSD)
 		double m = 0;
 		int p = -1;
-		for (int s=0; s<spc.length-1; s+=2) {
-			psd[s/2] = Math.sqrt((spc[s]*spc[s]) + (spc[s+1]*spc[s+1]));	// Compute PSD
+		for (int s=0; s<dat.length-1; s+=2) {
+			psd[s/2] = Math.sqrt((dat[s]*dat[s]) + (dat[s+1]*dat[s+1]));	// Compute PSD
 			if (m<psd[s/2]) {
 				m=psd[s/2];
 				p = s;
 			}
 		}
-		// convert array index to actual frequency offset
-		if (adsc.chns<2)
-			p = (p*(int)adsc.rate)/(2*dat.length);
-		else
-			p = (p*(int)adsc.rate)/dat.length - (int)adsc.rate/2;
+		// convert array index to actual frequency offset (given psd runs: zero->f/2->-f/2->zero)
+		if (p<dat.length/2) {
+			// lower half - positive frequencies up to f/2
+			p = p*adsc.rate/dat.length;
+		} else {
+			// upper half - negative frequencies
+			p -= dat.length;
+			p = p*adsc.rate/dat.length;
+		}
 		// Stash maxima frequency and size
 		psd[psd.length-2] = (double)p;
 		psd[psd.length-1] = m;

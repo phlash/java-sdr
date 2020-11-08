@@ -18,15 +18,16 @@
  *
  ***************************************************************************/
 
-// FUNcube Dongle interface, uses PureJavaHidApi for control & Javax.sound for
+// FUNcube Dongle interface, uses calls to fcdctl for control & Javax.sound for
 // audio (aka I/Q) samples
 
 package com.ashbysoft.java_sdr;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-
-import purejavahidapi.*;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
 
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.AudioFormat;
@@ -37,20 +38,22 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Semaphore;
+import java.util.Arrays;
 
-public class FCD implements InputReportListener {
+public class FCD {
 	// Return consts..
-	public static final int FME_NONE = 0;
-	public static final int FME_BL = 1;
-	public static final int FME_APP = 2;
+	public static final int OK = 0;
+	public static final int ERR = -1;
 	// fcdGetVersion return values..
 	public static final int FCD_VERSION_NONE = 0;/*!< No FCD detected */
 	public static final int FCD_VERSION_1    = 1;/*!< Original FCD. */
 	public static final int FCD_VERSION_1_1  = 2;/*!< Bias T added in 1.1 */
 	public static final int FCD_VERSION_2    = 3;/*!< Pro+ */
 	public static final int FCD_VERSION_UNK  = 4;/* Sorry no idea! */
+	// fcdGetMode return values..
+	public static final int FCD_MODE_NONE    = 0;/*!< No FCD detected */
+	public static final int FCD_MODE_BL      = 1;/*!< Bootloader */
+	public static final int FCD_MODE_APP     = 2;/*!< Application */
 
 	// tuner_rf_filter_t values
 	public static final int TRFE_0_4 = 0;
@@ -75,203 +78,99 @@ public class FCD implements InputReportListener {
 	public static final int TIFE_7MHZ = 6;
 	public static final int TIFE_8MHZ = 7;
 
-	// FCD HID commands
-	private static final int FCD_CMD_TIMEOUT           = 5;
-	private static final int FCD_CMD_LENGTH            = 64;
-	private static final byte FCD_CMD_BL_QUERY         = (byte)1;
-	private static final byte FCD_CMD_APP_RESET        = (byte)255;
-	private static final byte FCD_CMD_APP_SET_FREQ_KHZ = (byte)100;
-	private static final byte FCD_CMD_APP_SET_FREQ_HZ  = (byte)101;
-
-	// Report listener
-	private byte[] response = null;
-	private Semaphore reshere = new Semaphore(0, true);
-	public void onInputReport(HidDevice source,byte reportID,byte[] reportData,int reportLength) {
-		// ensure we will not overwrite an existing response (we are the only writer!)
-		if (response!=null) {
-			String err = String.format("FCD: HID report receive overrun: Path=%s, reportID=%d",
-				source.getHidDeviceInfo().getPath(), reportID);
-			logger.statusMsg(err);
-			System.err.println(err);
-			return;
-		}
-		// save response, wake up any threads..
-		response = reportData;
-		reshere.release();
-	}
-
 	// Private constructor (must use factory)
 	private ILogger logger;
-	private HidDevice device = null;
-	private FCD(ILogger log, HidDeviceInfo path) {
+	private String fcdctl;
+	private FCD(ILogger log, String path) {
 		logger = log;
-		logger.logMsg(String.format("FCD: opening %s (%s)", path.getPath(), path.getProductString()));
+		fcdctl = path;
+		logger.logMsg(String.format("fcd: using fcdctl @ %s", path));
+	}
+
+	// General execution handler
+	private String runFcdctl(String[] args) {
+		String[] cmd = new String[args.length+1];
+		cmd[0] = fcdctl;
+		System.arraycopy(args, 0, cmd, 1, args.length);
+		logger.logMsg("fcd: fcdctl args: "+Arrays.toString(cmd));
 		try {
-			device = PureJavaHidApi.openDevice(path);
-			device.setInputReportListener(this);
-		} catch (IOException ex) {
-			String err = String.format("FCD: Exception opening device: %s", ex.toString());
-			logger.statusMsg(err);
-			System.err.println(err);
+			Process proc = Runtime.getRuntime().exec(cmd);
+			BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+			String response = stdout.readLine();
+			int exit = proc.waitFor();
+			if (exit!=0) {
+				throw new Exception("non-zero exit code: "+exit);
+			}
+			logger.logMsg("fcd: fcdctl response: "+response);
+			return response;
+		} catch (Exception e) {
+			logger.logMsg("fcd: unable to run fcdctl: " + e.getMessage());
 		}
+		return null;
 	}
 	// Methods called by client
 	public int fcdGetVersion() {
-		StringBuffer fwstr = new StringBuffer();
-		switch (fcdGetFwVerStr(fwstr)) {
-		case FME_NONE:
+		String status = runFcdctl(new String[]{ "-m", "-s" });
+		if (null==status)
 			return FCD_VERSION_NONE;
-		case FME_BL:
-			// In bootloader mode, we only know v1.x or v2.x
-			if (fwstr.toString().startsWith("FCDBL"))
-				return FCD_VERSION_1;
-			else if (fwstr.toString().startsWith("FCD2BL"))
-				return FCD_VERSION_2;
-			break;
-		case FME_APP:
-			// In application mode, we can parse for 1.0/1.1 or 2.x
-			if (fwstr.toString().startsWith("FCDAPP")) {
-				if (fwstr.substring(17).startsWith("1.0"))
-					return FCD_VERSION_1;
-				else if (fwstr.substring(17).startsWith("1.1"))
-					return FCD_VERSION_1_1;
-				else if (fwstr.substring(17).startsWith("2.0"))
-					return FCD_VERSION_2;
-			}
-			break;
-		default:
-			// Eh? assume unknown device..
-		}
+		else if (status.indexOf("V1.0")>0)
+			return FCD_VERSION_1;
+		else if (status.indexOf("V1.1")>0)
+			return FCD_VERSION_1_1;
+		else if (status.indexOf("V2.0")>0)
+			return FCD_VERSION_2;
+		logger.logMsg("fcd: unknown version string: "+status);
 		return FCD_VERSION_UNK;
 	}
 	public int fcdGetMode() {
-		StringBuffer fwstr = new StringBuffer();
-		return fcdGetFwVerStr(fwstr);
+		String status = runFcdctl(new String[]{ "-m", "-s" });
+		if (null==status)
+			return FCD_MODE_NONE;
+		else if (status.indexOf("BL")>0)
+			return FCD_MODE_BL;
+		else
+			return FCD_MODE_APP;
 	}
 	public int fcdGetFwVerStr(StringBuffer fwver) {
-		int rv = FME_NONE;
-		String err = null;
-		if (device!=null) {
-			byte[] report = new byte[FCD_CMD_LENGTH];
-			report[0] = FCD_CMD_BL_QUERY;
-			// send the report (always ID 0)..
-			device.setOutputReport((byte)0, report, report.length);
-			// wait for response..
-			try {
-				if (reshere.tryAcquire(FCD_CMD_TIMEOUT, TimeUnit.SECONDS)) {
-					byte[] res = response;
-					response = null;
-					// check we got the answer to our request
-					if (res[0] == FCD_CMD_BL_QUERY && res[1] == (byte)1) {
-						for (int i=2; i<report.length; i++)
-							fwver.append(res[i]>=32 ? new String(res,i,1) : ' ');
-						if (fwver.toString().startsWith("FCDAPP"))
-							rv = FME_APP;
-						else
-							rv = FME_BL;
-					} else {
-						err = String.format("FCD: Got invalid HID response: %d (expecting %d)\n",
-							report[0], FCD_CMD_BL_QUERY);
-					}
-				} else {
-					// device went away?
-					err = String.format("FCD: Timeout waiting for HID response\n");
-				}
-			} catch (InterruptedException ex) {
-				err = String.format("FCD: Interrupted waiting for response: %s", ex.toString());
-			}
-		}
-		if (err!=null) {
-			logger.statusMsg(err);
-			System.err.println(err);
-		}
-		return rv;
+		String status = runFcdctl(new String[]{ "-m", "-s" });
+		if (null==status)
+			return ERR;
+		fwver.append(status);
+		return OK;
 	}
 	public int fcdAppReset() {
-		if (device!=null) {
-			byte[] report = new byte[FCD_CMD_LENGTH];
-			report[0] = FCD_CMD_APP_RESET;
-			device.setOutputReport((byte)0, report, report.length);
-			// Device now resets without acknowledgement, we drop everything
-			device.close();
-			device = null;
-		}
-		return FME_NONE;
+		String status = runFcdctl(new String[]{ "-m", "-r" });
+		if (null==status)
+			return ERR;
+		return OK;
 	}
 	public int fcdAppSetFreqkHz(int freq) {
-		int rv = FME_NONE;
-		String err = null;
-		if (device!=null) {
-			byte[] report = new byte[FCD_CMD_LENGTH];
-			report[0] = FCD_CMD_APP_SET_FREQ_KHZ;
-			report[1] = (byte)freq;
-			report[2] = (byte)(freq>>8);
-			report[3] = (byte)(freq>>16);
-			// send the report (always ID 0)..
-			device.setOutputReport((byte)0, report, report.length);
-			// wait for response..
-			try {
-				if (reshere.tryAcquire(FCD_CMD_TIMEOUT, TimeUnit.SECONDS)) {
-					byte[] res = response;
-					response = null;
-					// check we got the answer to our request
-					if (res[0] == FCD_CMD_APP_SET_FREQ_KHZ && res[1] == (byte)1) {
-						rv = FME_APP;
-					} else {
-						err = String.format("FCD: Got invalid HID response: %d (expecting %d)\n",
-							report[0], FCD_CMD_BL_QUERY);
-					}
-				} else {
-					// device went away?
-					err = String.format("FCD: Timeout waiting for HID response\n");
-				}
-			} catch (InterruptedException ex) {
-				err = String.format("FCD: Interrupted waiting for response: %s", ex.toString());
-			}
-		}
-		if (err!=null) {
-			logger.statusMsg(err);
-			System.err.println(err);
-		}
-		return rv;
+		String f = String.format("%g", (float)freq/1e3);
+		String status = runFcdctl(new String[]{ "-m", "-f", f});
+		if (null==status)
+			return ERR;
+		return OK;
 	}
 	public int fcdAppSetFreq(int freq) {
-		int rv = FME_NONE;
-		String err = null;
-		if (device!=null) {
-			byte[] report = new byte[FCD_CMD_LENGTH];
-			report[0] = FCD_CMD_APP_SET_FREQ_HZ;
-			report[1] = (byte)freq;
-			report[2] = (byte)(freq>>8);
-			report[3] = (byte)(freq>>16);
-			report[4] = (byte)(freq>>24);
-			// send the report (always ID 0)..
-			device.setOutputReport((byte)0, report, report.length);
-			// wait for response..
-			try {
-				if (reshere.tryAcquire(FCD_CMD_TIMEOUT, TimeUnit.SECONDS)) {
-					byte[] res = response;
-					response = null;
-					// check we got the answer to our request
-					if (res[0] == FCD_CMD_APP_SET_FREQ_HZ && res[1] == (byte)1) {
-						rv = FME_APP;
-					} else {
-						err = String.format("FCD: Got invalid HID response: %d (expecting %d)\n",
-							report[0], FCD_CMD_BL_QUERY);
-					}
-				} else {
-					// device went away?
-					err = String.format("FCD: Timeout waiting for HID response\n");
-				}
-			} catch (InterruptedException ex) {
-				err = String.format("FCD: Interrupted waiting for response: %s", ex.toString());
-			}
-		}
-		if (err!=null) {
-			logger.statusMsg(err);
-			System.err.println(err);
-		}
-		return rv;
+		String f = String.format("%g", (float)freq/1e6);
+		String status = runFcdctl(new String[]{ "-m", "-f", f});
+		if (null==status)
+			return ERR;
+		return OK;
+	}
+	public int fcdAppGetFreq() {
+		String status = runFcdctl(new String[]{ "-m", "-s" });
+		// parse freq from response
+		if (null==status)
+			return ERR;
+		int off = status.indexOf("FREQ");
+		off += (off>0? 5: 0);
+		int end = off>0? status.indexOf(" ", off): 0;
+		int freq = ERR;
+		try {
+			freq = Integer.parseInt(status.substring(off, end));
+		} catch (Exception e) { logger.logMsg("fcd: unparseable frequency?"); }
+		return freq;
 	}
 
 	// Factory method
@@ -280,33 +179,21 @@ public class FCD implements InputReportListener {
 	public static synchronized FCD getFCD(ILogger log, String partialPath) {
 		if (cached!=null)
 			return cached;
-		// enumerate all HID devices, match partialPath if supplied, else first FUNcube Dongle
-		// https://github.com/nyholku/purejavahidapi
-		List<HidDeviceInfo> devs = PureJavaHidApi.enumerateDevices();
-		HidDeviceInfo found = null;
-		for (HidDeviceInfo info: devs) {
-			log.logMsg(String.format("FCD: VID = 0x%04X PID = 0x%04X Manufacturer = %s Product = %s Path = %s, Serial = %s",
-			info.getVendorId(),
-			info.getProductId(),
-			info.getManufacturerString(),
-			info.getProductString(),
-			info.getPath(),
-			info.getSerialNumberString()));
-			if (partialPath!=null) {
-				if (info.getPath().indexOf(partialPath)>=0)
-					found = info;
-			} else {
-				if (info.getProductString().indexOf("FUNcube Dongle")>=0)
-					found = info;
-			}
-		}
+		String found = null;
+		// Search various places for fcdctl binary
+		try {
+			File us = new File(FCD.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParentFile();
+			log.logMsg("fcd: looking in: "+us);
+			File chk = new File(us, "fcdctl");
+			if (chk.canExecute())
+				found = chk.getPath();
+		} catch (Exception e) {}
 		if (found!=null)
 			cached = new FCD(log, found);
 		return cached;
 	}
 	public static synchronized void dropFCD() {
 		if (cached!=null) {
-			cached.device.close();
 			cached = null;
 		}
 	}
@@ -320,7 +207,7 @@ public class FCD implements InputReportListener {
 			Mixer mix = AudioSystem.getMixer(mixers[m]);
 			// Test for a FUNcube Dongle, unfortunately by string matching - thanks Java..
 			// addendum: Linux puts the USB name in description field, Windows in name field.. sheesh.
-			logger.logMsg("FCD: mixer: (" + mix.getClass().getName() + "): " + mixers[m].getDescription() + '/' + mixers[m].getName());
+			logger.logMsg("fcd: mixer: (" + mix.getClass().getName() + "): " + mixers[m].getDescription() + '/' + mixers[m].getName());
 			boolean hasLines = false;
 			for (Line.Info inf: mix.getTargetLineInfo()) {
 				logger.logMsg(" - target line: " + inf.toString());
@@ -348,13 +235,13 @@ public class FCD implements InputReportListener {
 		});
 		int mode = test.fcdGetMode();
 		int hwvr = test.fcdGetVersion();
-		System.out.println("mode=" + mode + " version="+hwvr);
-		if (mode==FCD.FME_APP) {
-			System.out.println("mode=" + mode);
+		int freq = test.fcdAppGetFreq();
+		System.out.println("mode=" + mode + " version="+hwvr + " freq=" + freq);
+		if (mode==FCD_MODE_APP) {
 			System.out.println("Tuning to 100MHz with kHz API");
 			mode = test.fcdAppSetFreqkHz(100000);
 			System.out.println("Tuning to 107.5MHz with Hz API");
-			mode = test.fcdAppSetFreqkHz(107500000);
+			mode = test.fcdAppSetFreq(107500000);
 			StringBuffer sb = new StringBuffer("Version: ");
 			test.fcdGetFwVerStr(sb);
 			System.out.println(sb);
@@ -386,8 +273,10 @@ public class FCD implements InputReportListener {
 					t.printStackTrace();
 				}
 			}
-		} else if (mode==FCD.FME_BL) {
+		} else if (mode==FCD_MODE_BL) {
 			System.out.println("Bootloader mode");
+		} else {
+			System.out.println("No FCD detected");
 		}
 	}
 }

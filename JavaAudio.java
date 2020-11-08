@@ -189,7 +189,7 @@ public class JavaAudio implements Runnable, IAudio {
         if (null==m_src)
             m_src = findSource(m_dev);
         // check for file:<path> source
-        if (m_src.getName().startsWith("file:")) {
+        if (m_src!=null && m_src.getName().startsWith("file:")) {
             audio = openFile(m_src.getName().substring(5));
             isFile = true;
         // ..or open a device
@@ -278,7 +278,7 @@ public class JavaAudio implements Runnable, IAudio {
 						"running (secs): ");
                     sb.append((etime-otime)/1000000000);
                     sb.append(" rds=").append(rds);
-					sb.append(" proc times (nsecs) rd[/wr]/fcd/[tab[,...]/cyc: ");
+					sb.append(" proc times (nsecs) rd/fcd/[tab[,...]/tot: ");
 					sb.append(rtime-stime);
 //					sb.append("/"+(wtime-rtime));
 					sb.append("/"+(ftime-rtime));
