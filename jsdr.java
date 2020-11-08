@@ -270,16 +270,20 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 				caud = args[i];
 		}
 		// Check/open FCD for tuning
+		freq = getIntConfig(CFG_FREQ, 145935);	// default FC-1 telmetry
 		fcd = FCD.getFCD(this);
-		freq = getIntConfig(CFG_FREQ, 435950);	// default FC-1 telmetry
 		if (fcd!=null) {
 			// update sample rate for detected version of FCD
-			if (fcd.fcdGetVersion()==FCD.FCD_VERSION_2)
+			if (fcd.fcdGetVersion()==FCD.FCD_VERSION_2) {
+				logMsg("jsdr: FCD V2 detected, adjusted audio-rate to 192000");
 				setIntConfig("audio-rate", 192000);
-			else
+			} else {
 				setIntConfig("audio-rate", 96000);
+				logMsg("jsdr: FCD V1.x detected, adjusted audio-rate to 96000");
+			}
 			// read back current tuning freq (adjust for kHz)
 			freq = fcd.fcdAppGetFreq()/1000;
+			logMsg("jsdr: FCD tuned to: "+freq+"kHz");
 		}
 
 		// Create audio object
@@ -595,12 +599,14 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		if (fcd!=null) {
 			if (freq==f || FCD.OK==fcd.fcdAppSetFreqkHz(f)) {
 				fcdtune.setText("| FCD:"+f+"kHz");
+				fcdtune.setEnabled(true);
 				setIntConfig(CFG_FREQ, f);
 				freq = f;
 				logMsg("jsdr: fcd tune to: "+freq);
 			}
 		} else {
-			fcdtune.setText("| FCD: n/a");
+			fcdtune.setText("| FCD:"+freq+"kHz");
+			fcdtune.setEnabled(false);
 		}
 	}
 

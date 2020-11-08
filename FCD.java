@@ -38,6 +38,7 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Arrays;
 
 public class FCD {
@@ -81,9 +82,12 @@ public class FCD {
 	// Private constructor (must use factory)
 	private ILogger logger;
 	private String fcdctl;
+	private boolean stale;
+	private String lastst;
 	private FCD(ILogger log, String path) {
 		logger = log;
 		fcdctl = path;
+		stale = true;
 		logger.logMsg(String.format("fcd: using fcdctl @ %s", path));
 	}
 
@@ -97,11 +101,11 @@ public class FCD {
 			Process proc = Runtime.getRuntime().exec(cmd);
 			BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()));
 			String response = stdout.readLine();
+			logger.logMsg("fcd: fcdctl response: "+response);
 			int exit = proc.waitFor();
 			if (exit!=0) {
 				throw new Exception("non-zero exit code: "+exit);
 			}
-			logger.logMsg("fcd: fcdctl response: "+response);
 			return response;
 		} catch (Exception e) {
 			logger.logMsg("fcd: unable to run fcdctl: " + e.getMessage());
@@ -110,10 +114,12 @@ public class FCD {
 	}
 	// Methods called by client
 	public int fcdGetVersion() {
-		String status = runFcdctl(new String[]{ "-m", "-s" });
+		String status = stale ? runFcdctl(new String[]{ "-m", "-s" }) : lastst;
 		if (null==status)
 			return FCD_VERSION_NONE;
-		else if (status.indexOf("V1.0")>0)
+		lastst= status;
+		stale = false;
+		if (status.indexOf("V1.0")>0)
 			return FCD_VERSION_1;
 		else if (status.indexOf("V1.1")>0)
 			return FCD_VERSION_1_1;
@@ -123,28 +129,34 @@ public class FCD {
 		return FCD_VERSION_UNK;
 	}
 	public int fcdGetMode() {
-		String status = runFcdctl(new String[]{ "-m", "-s" });
+		String status = stale ? runFcdctl(new String[]{ "-m", "-s" }) : lastst;
 		if (null==status)
 			return FCD_MODE_NONE;
-		else if (status.indexOf("BL")>0)
+		lastst= status;
+		stale = false;
+		if (status.indexOf("BL")>0)
 			return FCD_MODE_BL;
 		else
 			return FCD_MODE_APP;
 	}
 	public int fcdGetFwVerStr(StringBuffer fwver) {
-		String status = runFcdctl(new String[]{ "-m", "-s" });
+		String status = stale ? runFcdctl(new String[]{ "-m", "-s" }) : lastst;
 		if (null==status)
 			return ERR;
+		lastst= status;
+		stale = false;
 		fwver.append(status);
 		return OK;
 	}
 	public int fcdAppReset() {
+		stale = true;
 		String status = runFcdctl(new String[]{ "-m", "-r" });
 		if (null==status)
 			return ERR;
 		return OK;
 	}
 	public int fcdAppSetFreqkHz(int freq) {
+		stale = true;
 		String f = String.format("%g", (float)freq/1e3);
 		String status = runFcdctl(new String[]{ "-m", "-f", f});
 		if (null==status)
@@ -152,6 +164,7 @@ public class FCD {
 		return OK;
 	}
 	public int fcdAppSetFreq(int freq) {
+		stale = true;
 		String f = String.format("%g", (float)freq/1e6);
 		String status = runFcdctl(new String[]{ "-m", "-f", f});
 		if (null==status)
@@ -159,10 +172,12 @@ public class FCD {
 		return OK;
 	}
 	public int fcdAppGetFreq() {
-		String status = runFcdctl(new String[]{ "-m", "-s" });
+		String status = stale ? runFcdctl(new String[]{ "-m", "-s" }) : lastst;
 		// parse freq from response
 		if (null==status)
 			return ERR;
+		lastst= status;
+		stale = false;
 		int off = status.indexOf("FREQ");
 		off += (off>0? 5: 0);
 		int end = off>0? status.indexOf(" ", off): 0;
@@ -179,17 +194,34 @@ public class FCD {
 	public static synchronized FCD getFCD(ILogger log, String partialPath) {
 		if (cached!=null)
 			return cached;
-		String found = null;
-		// Search various places for fcdctl binary
+		// Search app folder, then $PATH for fcdctl binary
+		FCD test = null;
 		try {
-			File us = new File(FCD.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParentFile();
-			log.logMsg("fcd: looking in: "+us);
-			File chk = new File(us, "fcdctl");
-			if (chk.canExecute())
-				found = chk.getPath();
-		} catch (Exception e) {}
-		if (found!=null)
-			cached = new FCD(log, found);
+			ArrayList<File> dirs = new ArrayList<File>();
+			dirs.add(new File(FCD.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getParentFile());
+			for (String p : System.getenv("PATH").split(File.pathSeparator))
+				dirs.add(new File(p));
+			for (File dir : dirs) {
+				log.logMsg("fcd: looking in: "+dir);
+				File chk = new File(dir, "fcdctl");
+				if (chk.canExecute()) {
+					test = new FCD(log, chk.getPath());
+					if (FCD_MODE_NONE==test.fcdGetMode())
+						test = null;
+					else
+						break;
+				}
+			}
+		} catch (Exception e) {
+			log.logMsg("fcd: oops looking for fcdctl: "+e.getMessage());
+			test = null;
+		}
+		if (test!=null) {
+			cached = test;
+			log.logMsg("fcd: detected: "+test.lastst);
+		} else {
+			log.logMsg("fcd: unable to find working fcdctl");
+		}
 		return cached;
 	}
 	public static synchronized void dropFCD() {
