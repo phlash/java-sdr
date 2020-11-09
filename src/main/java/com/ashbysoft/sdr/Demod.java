@@ -1,6 +1,4 @@
-// Demodulate AM or FM from sample stream
-
-// Integrate with spectrum display to allow graphical selection of filter band
+package com.ashbysoft.sdr;
 
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.AudioFormat;
@@ -20,10 +18,14 @@ import javax.swing.JRadioButton;
 import javax.swing.ButtonGroup;
 import javax.swing.JComboBox;
 
+/**
+ * Demodulate AM or FM from sample stream
+ * Integrate with spectrum display to allow graphical selection of filter band
+ */
 @SuppressWarnings("serial")
-public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runnable {
+public class Demod extends JPanel implements JSDR.JsdrTab, ActionListener, Runnable {
 
-	private jsdr parent;
+	private JSDR parent;
 	private AudioFormat fmt, aud;
 	private Thread thr;
 	private int[] sam;
@@ -41,7 +43,7 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 	private ArrayList<Mixer.Info> mix;
 	private SourceDataLine out;
 
-	public demod(jsdr p, AudioFormat af, int bufsize) {
+	public Demod(JSDR p, AudioFormat af, int bufsize) {
 		parent = p;
 		fmt = af;
 		// Audio output format retains input sample rate for ease of coding, otherwise S16_le :)
@@ -276,11 +278,11 @@ public class demod extends JPanel implements jsdr.JsdrTab, ActionListener, Runna
 		weights();
 		if (dofir) {
 			this.mod[0]=-(this.fhi-this.flo)/2;
-			jsdr.publish.setProperty("demod-filter-low", ""+this.flo);
-			jsdr.publish.setProperty("demod-filter-high", ""+this.fhi);
+			JSDR.publish.setProperty("demod-filter-low", ""+this.flo);
+			JSDR.publish.setProperty("demod-filter-high", ""+this.fhi);
 		} else {
-			jsdr.publish.remove("demod-filter-low");
-			jsdr.publish.remove("demod-filter-high");
+			JSDR.publish.remove("demod-filter-low");
+			JSDR.publish.remove("demod-filter-high");
 		}
 	}
 

@@ -1,3 +1,5 @@
+package com.ashbysoft.sdr;
+
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.Mixer;
@@ -8,7 +10,7 @@ import java.util.ArrayList;
 import java.util.StringTokenizer;
 import java.io.Console;
 
-public class fir implements Runnable {
+public class FIR implements Runnable {
 	private String help = "commands: h[elp], o[utput] <n>, r[ate] <sample rate>, t[ype] w[hite]|s[in], f[req] <sin freq>\n"+
 		"          e[nable], d[isable], a[llpass], l[ow] <threshold freq>, u[pper] <threshold freq>, s[hift] <freq>\n"+
 		"          m[odulate], q[uit]\n";
@@ -32,7 +34,7 @@ public class fir implements Runnable {
 	private int fof = fir.length-1;
 
 	public static void main(String[] args) {
-		fir me = new fir();
+		FIR me = new FIR();
 		me.boot();
 	}
 

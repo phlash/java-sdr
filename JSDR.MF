@@ -1,3 +1,0 @@
-Main-Class: jsdr
-Author: Phil Ashby
-Class-Path: CLASSPATH
