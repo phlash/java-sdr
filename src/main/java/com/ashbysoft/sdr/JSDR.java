@@ -1,5 +1,5 @@
-// Swing based display framework for SDR, just a frame with some tabs to select
-// display format, and the FCD input config/thread.
+package com.ashbysoft.sdr;// Swing based display framework for SDR, just a frame with some tabs to select
+
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.WindowAdapter;
@@ -28,7 +28,10 @@ import javax.swing.JTabbedPane;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
-public class jsdr implements Runnable, MessageOut {
+/**
+ * display format, and the FCD input config/thread.
+ */
+public class JSDR implements Runnable, MessageOut {
 
 	private static SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss: ");
 	public static Properties config;
@@ -129,7 +132,7 @@ public class jsdr implements Runnable, MessageOut {
 	}
 
 	@SuppressWarnings("serial")
-	private jsdr() {
+	private JSDR() {
 		// The audio format
 		int rate = getIntConfig(CFG_AUDRAT, 96000);	// Default 96kHz sample rate
 		int bits = getIntConfig(CFG_AUDBIT, 16);		// Default 16 bits/sample
@@ -257,9 +260,9 @@ public class jsdr implements Runnable, MessageOut {
 			}
 		});
 		// The content in each tab
-		tabs.add("Spectrum", new fft(this, format, bufsize));
-		tabs.add("Phase", new phase(this, format, bufsize));
-		tabs.add("Demodulator", new demod(this, format, bufsize));
+		tabs.add("Spectrum", new FFT(this, format, bufsize));
+		tabs.add("Phase", new Phase(this, format, bufsize));
+		tabs.add("Demodulator", new Demod(this, format, bufsize));
 		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
 		for (int fc=0; fc<nfcs; fc++) {
 			String nm = "FUNcube"+fc;
@@ -555,7 +558,7 @@ public class jsdr implements Runnable, MessageOut {
 		// Get the UI up as soon as possible, we might need to display errors..
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
-				new jsdr();
+				new JSDR();
 			}
 		});
 	}
@@ -565,10 +568,4 @@ public class jsdr implements Runnable, MessageOut {
 		public void newBuffer(ByteBuffer buf);
 		public void hotKey(char c);
 	}
-}
-
-// Interface implemented by message output components (us!)
-interface MessageOut {
-	public void logMsg(String s);
-	public void statusMsg(String s);
 }

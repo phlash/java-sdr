@@ -12,6 +12,15 @@ It's all very experimental.. and unofficial.
 
 Phil.
 
+## Build
+```
+./gradlew build
+```
+## Run
+```
+./gradlew run
+```
+
 ## Refactoring plans..
 
 Time to clean up my act :)

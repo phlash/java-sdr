@@ -1,4 +1,4 @@
-// Display signal phase diagram from FCD :)
+package com.ashbysoft.sdr;
 
 import javax.sound.sampled.AudioFormat;
 import java.nio.ByteBuffer;
@@ -6,15 +6,18 @@ import java.awt.Graphics;
 import java.awt.Color;
 import javax.swing.JPanel;
 
+/**
+ * Display signal phase diagram from FCD :)
+ */
 @SuppressWarnings("serial")
-public class phase extends JPanel implements jsdr.JsdrTab {
+public class Phase extends JPanel implements JSDR.JsdrTab {
 
-	private jsdr parent;
+	private JSDR parent;
 	private AudioFormat fmt;
 	private int[] dpy;
 	private int max=1;
 
-	public phase(jsdr p, AudioFormat af, int bufsize) {
+	public Phase(JSDR p, AudioFormat af, int bufsize) {
 		parent = p;
 		fmt = af;
 		int sbytes = (af.getSampleSizeInBits()+7)/8;

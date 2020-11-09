@@ -1,3 +1,4 @@
+package com.ashbysoft.sdr;
 /***************************************************************************
  *  This file is part of java-sdr.
  *
@@ -18,9 +19,6 @@
  *
  ***************************************************************************/
 
-// FUNcube Dongle interface, uses PureJavaHidApi for control & Javax.sound for
-// audio (aka I/Q) samples
-
 import java.io.FileOutputStream;
 import java.io.IOException;
 
@@ -38,6 +36,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
 
+/**
+ * FUNcube Dongle interface, uses PureJavaHidApi for control & Javax.sound for
+ * audio (aka I/Q) samples
+ */
 public class FCD implements InputReportListener {
 	// Return consts..
 	public static final int FME_NONE = 0;

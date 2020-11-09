@@ -1,3 +1,5 @@
+package com.ashbysoft.sdr;
+
 import java.awt.Color;
 import java.awt.Graphics;
 import java.nio.ByteBuffer;
@@ -9,13 +11,13 @@ import javax.swing.JPanel;
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
 @SuppressWarnings("serial")
-public class fft extends JPanel implements jsdr.JsdrTab {
+public class FFT extends JPanel implements JSDR.JsdrTab {
 	public final String CFG_FFTHAM = "fft-hamming";
 	public final String CFG_FFTLOG = "fft-log";
 	public final String CFG_FFTGAIN= "fft-gain";
 	public final String CFG_FFTAUTO= "fft-auto";
 
-	private jsdr parent;
+	private JSDR parent;
 	private double[] dat;
 	private double[] spc;
 	private double[] psd;
@@ -26,7 +28,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 	private int gain;
 	private AudioFormat fmt;
 
-	public fft(jsdr p, AudioFormat af, int bufsize) {
+	public FFT(JSDR p, AudioFormat af, int bufsize) {
 		parent = p;
 		// Allocate buffers according to format..
 		int sbytes = (af.getSampleSizeInBits()+7)/8;
@@ -45,10 +47,10 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		p.regHotKey('G', "Decrease fft gain");
 		p.regHotKey('A', "Toggle fft gain auto");
 		// Grab saved config
-		dow = jsdr.getIntConfig(CFG_FFTHAM, 1)!=0 ? true : false;
-		log = jsdr.getIntConfig(CFG_FFTLOG, 1)!=0 ? true : false;
-		auto = jsdr.getIntConfig(CFG_FFTAUTO, 1)!=0 ? true : false;
-		gain = jsdr.getIntConfig(CFG_FFTGAIN, 0);
+		dow = JSDR.getIntConfig(CFG_FFTHAM, 1)!=0 ? true : false;
+		log = JSDR.getIntConfig(CFG_FFTLOG, 1)!=0 ? true : false;
+		auto = JSDR.getIntConfig(CFG_FFTAUTO, 1)!=0 ? true : false;
+		gain = JSDR.getIntConfig(CFG_FFTGAIN, 0);
 	}
 
 	protected void paintComponent(Graphics g) {
@@ -97,8 +99,8 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		}
 		long qtime=System.nanoTime();
 		// PSD and demod filter in lower 1/3rd (log scale if selected)
-		int flo = jsdr.getIntPublish("demod-filter-low", Integer.MIN_VALUE);
-		int fhi = jsdr.getIntPublish("demod-filter-high", Integer.MAX_VALUE);
+		int flo = JSDR.getIntPublish("demod-filter-low", Integer.MIN_VALUE);
+		int fhi = JSDR.getIntPublish("demod-filter-high", Integer.MAX_VALUE);
 		if (flo > Integer.MIN_VALUE && fhi < Integer.MAX_VALUE) {
 			g.setColor(Color.decode("0x0f0f0f"));
 			int wd = (fmt.getChannels()<2) ? getWidth() : getWidth()/2;
@@ -133,7 +135,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 		for (int fc=0; dbar; fc++) {
 			dbar = false;
 			String nm = "FUNcube"+fc+"-bpsk-centre";
-			int cb = jsdr.getIntPublish(nm, -1);
+			int cb = JSDR.getIntPublish(nm, -1);
 			if (cb>0) {
 				int tc = (int)((float)cb/s)+off;
 				g.drawLine(tc, getHeight(), tc, getHeight()*2/3);
@@ -141,7 +143,7 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 				dbar = true;
 			}
 			nm = "FUNcube"+fc+"-bpsk-tune";
-			cb = jsdr.getIntPublish(nm, -1);
+			cb = JSDR.getIntPublish(nm, -1);
 			if (cb>0) {
 				int wd = (fmt.getChannels()<2) ? getWidth() : getWidth()/2;
 				int tc = (int)((float)cb/(fmt.getSampleRate()/2)*(float)wd)+off;
@@ -237,9 +239,9 @@ public class fft extends JPanel implements jsdr.JsdrTab {
 			gain++;
 		if ('G'==c)
 			gain--;
-		jsdr.config.setProperty(CFG_FFTHAM, dow ? "1" : "0");
-		jsdr.config.setProperty(CFG_FFTLOG, log ? "1" : "0");
-		jsdr.config.setProperty(CFG_FFTAUTO, auto ? "1" : "0");
-		jsdr.config.setProperty(CFG_FFTGAIN, String.valueOf(gain));
+		JSDR.config.setProperty(CFG_FFTHAM, dow ? "1" : "0");
+		JSDR.config.setProperty(CFG_FFTLOG, log ? "1" : "0");
+		JSDR.config.setProperty(CFG_FFTAUTO, auto ? "1" : "0");
+		JSDR.config.setProperty(CFG_FFTGAIN, String.valueOf(gain));
 	}
 }

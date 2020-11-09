@@ -1,3 +1,4 @@
+package com.ashbysoft.sdr;
 // Java port of Phil Karn's and J R Miller's AO-40 FEC decoder
 // Author: Phil Ashby, May 2013
 
