@@ -308,8 +308,8 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		registerHandler(item.getActionCommand(), "openDev");
 		item.addActionListener(this);
 		file.add(item);
-		item = new JMenuItem("Close Audio...", KeyEvent.VK_C);
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
+		item = new JMenuItem("Close Audio", KeyEvent.VK_C);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-close-audio");
 		registerHandler(item.getActionCommand(), "closeAudio");
 		item.addActionListener(this);
@@ -325,34 +325,40 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		// Audio menu
 		JMenu aud = new JMenu("Audio");
 		aud.setMnemonic(KeyEvent.VK_A);
-		item = new JMenuItem("[Un]pause", KeyEvent.VK_P);
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, 0));
+		item = new JMenuItem("[un]Pause", KeyEvent.VK_P);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, InputEvent.ALT_DOWN_MASK));
 		item.setActionCommand("jsdr-pause");
 		registerHandler(item.getActionCommand(), "audioPause");
 		item.addActionListener(this);
 		aud.add(item);
 		item = new JMenuItem("Adj I: +1");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, 0));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, InputEvent.ALT_DOWN_MASK));
 		item.setActionCommand("jsdr-adj-i+1");
 		registerHandler(item.getActionCommand(), "adjIPlus1");
 		item.addActionListener(this);
 		aud.add(item);
 		item = new JMenuItem("Adj I: -1");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, InputEvent.SHIFT_DOWN_MASK));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, InputEvent.ALT_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
 		item.setActionCommand("jsdr-adj-i-1");
 		registerHandler(item.getActionCommand(), "adjISub1");
 		item.addActionListener(this);
 		aud.add(item);
 		item = new JMenuItem("Adj Q: +1");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, 0));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.ALT_DOWN_MASK));
 		item.setActionCommand("jsdr-adj-q+1");
 		registerHandler(item.getActionCommand(), "adjQPlus1");
 		item.addActionListener(this);
 		aud.add(item);
 		item = new JMenuItem("Adj Q: -1");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.SHIFT_DOWN_MASK));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.ALT_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
 		item.setActionCommand("jsdr-adj-q-1");
 		registerHandler(item.getActionCommand(), "adjQSub1");
+		item.addActionListener(this);
+		aud.add(item);
+		item = new JMenuItem("Reset I/Q");
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.ALT_DOWN_MASK));
+		item.setActionCommand("jsdr-reset-iq");
+		registerHandler(item.getActionCommand(), "adjIQReset");
 		item.addActionListener(this);
 		aud.add(item);
 		menu.add(aud);
@@ -361,43 +367,43 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		JMenu fmenu = new JMenu("FCD");
 		fmenu.setMnemonic(KeyEvent.VK_C);
 		item = new JMenuItem("Freq...", KeyEvent.VK_F);
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, 0));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-freq");
 		registerHandler(item.getActionCommand(), "fcdDialog");
 		item.addActionListener(this);
 		fmenu.add(item);
 		item = new JMenuItem("Tune:+1 kHz");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, 0));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-plus1");
 		registerHandler(item.getActionCommand(), "fcdPlus1");
 		item.addActionListener(this);
 		fmenu.add(item);
 		item = new JMenuItem("Tune:+10 kHz");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, InputEvent.SHIFT_DOWN_MASK));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK|InputEvent.ALT_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-plus10");
 		registerHandler(item.getActionCommand(), "fcdPlus10");
 		item.addActionListener(this);
 		fmenu.add(item);
 		item = new JMenuItem("Tune:+50 kHz");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, 0));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK|InputEvent.ALT_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-plus50");
 		registerHandler(item.getActionCommand(), "fcdPlus50");
 		item.addActionListener(this);
 		fmenu.add(item);
 		item = new JMenuItem("Tune:-1 kHz");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, 0));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-sub1");
 		registerHandler(item.getActionCommand(), "fcdSub1");
 		item.addActionListener(this);
 		fmenu.add(item);
 		item = new JMenuItem("Tune:-10 kHz");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.SHIFT_DOWN_MASK));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK|InputEvent.ALT_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-sub10");
 		registerHandler(item.getActionCommand(), "fcdSub10");
 		item.addActionListener(this);
 		fmenu.add(item);
 		item = new JMenuItem("Tune:-50 kHz");
-		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.SHIFT_DOWN_MASK));
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK|InputEvent.ALT_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
 		item.setActionCommand("jsdr-fcd-sub50");
 		registerHandler(item.getActionCommand(), "fcdSub50");
 		item.addActionListener(this);
@@ -557,6 +563,11 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 	public void adjQPlus1() { audio.setQCorrection(audio.getQCorrection()+1); updateIQ(); }
 	public void adjISub1() { audio.setICorrection(audio.getICorrection()-1); updateIQ(); }
 	public void adjQSub1() { audio.setQCorrection(audio.getQCorrection()-1); updateIQ(); }
+	public void adjIQReset() {
+		audio.setICorrection(0);
+		audio.setQCorrection(0);
+		updateIQ();
+	}
 	private void updateIQ() {
 		iqcorr.setText("| I/Q:"+audio.getICorrection()+'/'+audio.getQCorrection());
 	}

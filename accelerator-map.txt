@@ -1,0 +1,42 @@
+file menu
+ Ctrl-O: Open file
+ Ctrl-D: open Device
+ Ctrl-W: Close audio
+ Ctrl-Q: Quit
+
+audio menu
+ Alt-P: Pause
+ Alt-I: +I correct
+ Alt-Shift-I: -I correct
+ Alt-Q: +Q correct
+ Alt-Shift-Q: -Q correct
+ Alt-R: Reset I/Q
+
+fcd menu
+ Ctrl-F: Frequency input
+ Ctrl-+: +1kHz
+ Ctrl--: -1kHz
+ Ctrl-Alt-+: +10kHz
+ Ctrl-Alt--: -10kHz
+ Ctrl-Alt-Shift-+: +50kHz
+ Ctrl-Alt-Shift--: -50kHz
+
+fft menu
+ Ctrl-H: hamming toggle
+
+demod menu
+ AltGr-D: output Device
+ AltGr-O: mode Off
+ AltGr-R: mode Raw
+ AltGr-A: mode AM
+ AltGr-N: mode Nfm
+ AltGr-W: mode Wfm
+ AltGr-G: aGc toggle
+ AltGr-I: fIr toggle
+ AltGr-S: downShift toggle
+ AltGr-F: Fir frequency input
+ AltGr-L: +500Hz fir
+ AltGr-K: -500Hz fir
+ Ctrl-AltGr-L: widen fir 500Hz
+ Ctrl-AltGr-K: narroW fir 500Hz
+
