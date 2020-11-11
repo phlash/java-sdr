@@ -41,7 +41,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.BorderFactory;
 import javax.swing.border.BevelBorder;
 
-public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListener, ActionListener, PropertyChangeListener, Runnable {
+public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListener, ActionListener, PropertyChangeListener {
 
 	private static final int m_ver = 2;
 	private static final String m_cfg = "jsdr.properties";
@@ -193,14 +193,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 
 	// IPublishListener
 	public void notify(String key, Object val) {
-		// check for audio frame and repaint everything (out of audio thread!)
-		if("audio-frame".equals(key))
-			SwingUtilities.invokeLater(this);
-	}
-
-	// Runnable - in Swing thread context, forces paint of all components
-	public void run() {
-		frame.repaint();
+		// TODO: might need to take action on something...
 	}
 
 	// ActionListener - we choose to use reflection rather than a hard-coded
@@ -475,12 +468,7 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		tabs.add("Phase", new phase(this, this, this, this, audio));
 		tabs.add("FFT", new fft(this, this, this, this, audio));
 		tabs.add("Demod", new demod(this, this, this, this, audio));
-		Color[] bks = {Color.cyan, Color.pink, Color.yellow};
-		for (int t=0; t<3; t++) {
-			JPanel tab = new JPanel();
-			tab.setBackground(bks[t]);
-			tabs.add("Tab#"+t, tab);
-		}
+		tabs.add("Record", new recorder(this, this, this, this, audio));
 		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
 
 		// spacer & help menu, after any tab menus
@@ -550,7 +538,6 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 	}
 
 	public void quit() {
-		audio.stop();
 		saveConfig();
 		System.exit(0);
 	}

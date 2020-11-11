@@ -19,6 +19,7 @@ CLASSES= \
 	AudioSource.class \
 	IAudio.class \
 	IAudioHandler.class \
+	IRawHandler.class \
 	IUIHost.class \
 	IUIComponent.class \
 	JavaAudio.class \
@@ -27,6 +28,7 @@ CLASSES= \
 	FCD.class \
 	phase.class \
 	fft.class \
+	recorder.class \
 	demod.class 
 #	FUNcubeBPSKDemod.class \
 #	FECDecoder.class \

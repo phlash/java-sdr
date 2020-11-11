@@ -1,7 +1,5 @@
 package com.ashbysoft.java_sdr;
 
-import java.nio.ByteBuffer;
-
 public interface IAudio {
     public AudioDescriptor getAudioDescriptor();
     public AudioSource[] getAudioSources();
@@ -18,4 +16,6 @@ public interface IAudio {
     public void setQCorrection(int q);
     public void addHandler(IAudioHandler hand);
     public void remHandler(IAudioHandler hand);
+    public void addRawHandler(IRawHandler hand);
+    public void remRawHandler(IRawHandler hand);
 }

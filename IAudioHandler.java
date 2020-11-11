@@ -1,7 +1,6 @@
 package com.ashbysoft.java_sdr;
 
-import java.nio.ByteBuffer;
-
 public interface IAudioHandler {
-    public void receive(ByteBuffer buf);
+    // sample buffer always contains IQ data (2*floats/sample) in -1.0/1.0 range
+    public void receive(float[] buf);
 }

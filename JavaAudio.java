@@ -21,8 +21,6 @@ public class JavaAudio implements Runnable, IAudio {
     private final String CFG_MODE = m_pfx+"-mode";
     private final String CFG_ICOR = m_pfx+"-ic";
     private final String CFG_QCOR = m_pfx+"-qc";
-    private final String CFG_WAVE = m_pfx+"-wav-file";
-    private final String CFG_FCDF = m_pfx+"-fcd_tune";
     private IConfig m_cfg;
     private IPublish m_pub;
     private ILogger m_log;
@@ -31,18 +29,20 @@ public class JavaAudio implements Runnable, IAudio {
     private int m_blen;
     private int m_ic;
     private int m_qc;
-    private String m_wav;
     private String m_dev;
     private Thread m_thr;
     private boolean m_pau;
 
     private ArrayList<IAudioHandler> m_hands;
+    private ArrayList<IRawHandler> m_raws;
 
     public JavaAudio(IConfig cfg, IPublish pub, ILogger log) {
         m_cfg = cfg;
         m_pub = pub;
         m_log = log;
         m_hands = new ArrayList<IAudioHandler>();
+        m_raws = new ArrayList<IRawHandler>();
+
         logMsg("configuring audio..");
 
 		// The audio format
@@ -67,11 +67,11 @@ public class JavaAudio implements Runnable, IAudio {
         // The input device (by name)
         m_dev = m_cfg.getConfig(CFG_ADEV, "FUNcube Dongle");
         logMsg("dev="+m_dev);
-
-		// TODO: Raw recording file
-		m_wav = m_cfg.getConfig(CFG_WAVE, "");
-        logMsg("wav="+m_wav);
         logMsg("config done");
+
+        // Shutdown hook to close stuff
+        Thread shut = new Thread(this, "die");
+        Runtime.getRuntime().addShutdownHook(shut);
     }
 
     // IAudio
@@ -121,7 +121,7 @@ public class JavaAudio implements Runnable, IAudio {
             if (m_thr!=null)
                 return;     // multiple start requests are harmless
             resume();
-		    m_thr = new Thread(this);
+		    m_thr = new Thread(this, "run");
             m_thr.start();
         }
         logMsg("started");
@@ -180,8 +180,24 @@ public class JavaAudio implements Runnable, IAudio {
         }
     }
 
-    // Runnable
+     public void addRawHandler(IRawHandler hand) {
+        synchronized(m_raws) {
+            m_raws.add(hand);
+        }
+    }
+
+    public void remRawHandler(IRawHandler hand) {
+        synchronized(m_raws) {
+            m_raws.remove(hand);
+        }
+    }
+   // Runnable
 	public void run() {
+        // check for shutdown thread
+        if ("die".equals(Thread.currentThread().getName())) {
+            stop();
+            return;
+        }
 		// Open the appropriate file/device..
 		AudioInputStream audio = null;
 		boolean isFile = false;
@@ -192,6 +208,7 @@ public class JavaAudio implements Runnable, IAudio {
         if (m_src!=null && m_src.getName().startsWith("file:")) {
             audio = openFile(m_src.getName().substring(5));
             isFile = true;
+            audio.mark(Integer.MAX_VALUE);
         // ..or open a device
         } else {
             audio = openDevice(m_src);
@@ -199,17 +216,20 @@ public class JavaAudio implements Runnable, IAudio {
 		if (audio!=null) {
 			m_log.statusMsg("Audio from: " + m_src + "@" + m_af.getSampleRate());
 			try {
+                // raw audio data (mono or IQ)
 				byte[] raw = new byte[m_blen];
-				ByteBuffer buf = ByteBuffer.allocate(m_blen);
-				buf.order(m_af.isBigEndian() ?
-					ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
+                ByteBuffer cnv = ByteBuffer.allocate(raw.length);
+                cnv.order(ByteOrder.LITTLE_ENDIAN);
+                // normalised IQ data buffer
+				float[] buf = new float[2*m_blen/m_af.getFrameSize()];
 				long otime = System.nanoTime();
+                long dtime = 0;
+                long etime = 0;
 				while (m_thr!=null) {
-					long stime=System.nanoTime();
-                    long etime = stime;
+                    long stime = System.nanoTime();
                     // Step#0: delay if reading from a file
 					if (isFile) {
-						int tot=(int)((etime-stime)/1000000);
+						int tot=(int)((etime-dtime)/1000000);
 						Thread.sleep(tot<100 ? 100-tot : 0);
                         // paused? go around..
                         if (m_pau) {
@@ -217,48 +237,60 @@ public class JavaAudio implements Runnable, IAudio {
                             continue;
                         }
 					}
+                    dtime = System.nanoTime();
                     // Step#1: raw byte read
 					int l=0, rds=0;
-/* TODO scanner					if (fscan!=null) {		// Skip first buffer(~100ms) after retune when scanning..
-						while (l<raw.length) {
-							l+=audio.read(raw, l, raw.length-l);
-							++rds;
-						}
-						logMsg("audio reads (skip)="+rds);
-					} */
-					l=rds=0;
 					while (l<raw.length) {
-						l+=audio.read(raw, l, raw.length-l);
+                        int n=audio.read(raw, l, raw.length-l);
+                        if (n<=0) {
+                            logMsg("eof");
+                            break;
+                        }
+						l+=n;
 						++rds;
 					}
+                    if (l<raw.length) {
+                        if (isFile) {
+                            // go round again..
+                            audio.reset();
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                    // raw handlers
+                    synchronized(m_raws) {
+                        for (IRawHandler hand : m_raws)
+                            hand.receive(raw);
+                    }
+                    cnv.clear();
+                    cnv.put(raw);
+                    cnv.rewind();
 					long rtime=System.nanoTime();
                     // paused? go around discarding data..
                     if (m_pau) {
                         logMsg("paused (device)");
                         continue;
                     }
-                    // Step#2: transfer to ByteBuffer, apply I/Q correction
-					buf.clear();
-					buf.put(raw);
-                    for (l=0; l<m_blen; l+=m_af.getFrameSize()) {
-                        for (int c=0; c<m_af.getChannels(); c++) {
-                            // TODO: support other than 16-bit samples!
-                            short s = buf.getShort(l+c*2);
-                            s += (short)(0==c ? m_ic : m_qc);
-                            buf.putShort(l+c*2, s);
+                    // Step#2: read byte->short, apply I/Q correction, convert to float
+                    int fs=m_af.getFrameSize();
+                    int cs=m_af.getChannels();
+                    int sn=0;
+                    for (l=0; l<m_blen; l+=fs) {
+                        // TODO: support other than 16-bit samples!
+                        short s = cnv.getShort();
+                        s += (short)m_ic;
+                        buf[sn] = (float)s/(float)Short.MAX_VALUE;
+                        sn++;
+                        if (cs>1) {
+                            s = cnv.getShort();
+                            s += (short)m_qc;
+                            buf[sn] = (float)s/(float)Short.MAX_VALUE;
+                        } else {
+                            buf[sn] = 0;
                         }
+                        sn++;
                     }
-/* TODO wave out					if (wout!=null)
-						wout.write(raw);
-					long wtime=System.nanoTime(); */
-/* TODO scanner					if (fscan!=null) {		// Retune ASAP after each buffer..
-						if (freq<2000000) {
-							fcdSetFreq(freq+100);
-						} else {
-							fscan = null;
-							statusMsg("Scan complete!");
-						}
-					} */
 					long ftime=System.nanoTime();
                     // Step#3: feed the handlers
                     long[] ttimes = null;
@@ -266,7 +298,6 @@ public class JavaAudio implements Runnable, IAudio {
                     synchronized(m_hands) {
                         ttimes = new long[m_hands.size()];
                         for (int t=0; t<m_hands.size(); t++) {
-                            buf.rewind();
                             m_hands.get(t).receive(buf);
                             ttimes[t]=System.nanoTime();
                         }
@@ -274,18 +305,16 @@ public class JavaAudio implements Runnable, IAudio {
                     m_pub.setPublish("audio-frame", Boolean.TRUE);
 					etime=System.nanoTime();
 					StringBuffer sb = new StringBuffer(
-//						(wout!=null?wave+":":"") +
 						"running (secs): ");
                     sb.append((etime-otime)/1000000000);
                     sb.append(" rds=").append(rds);
 					sb.append(" proc times (nsecs) rd/fcd/[tab[,...]/tot: ");
-					sb.append(rtime-stime);
-//					sb.append("/"+(wtime-rtime));
-					sb.append("/"+(ftime-rtime));
-					if (ttimes!=null && ttimes.length>0) sb.append("/"+(ttimes[0]-ftime));
+					sb.append(rtime-dtime);
+					sb.append("/").append(ftime-rtime);
+					if (ttimes!=null && ttimes.length>0) sb.append("/").append(ttimes[0]-ftime);
 					for (int t=1; ttimes!=null && t<ttimes.length; t++)
-						sb.append(","+(ttimes[t]-ttimes[t-1]));
-					sb.append("/"+(etime-stime));
+						sb.append(",").append(ttimes[t]-ttimes[t-1]);
+					sb.append("/").append(etime-stime);
 					logMsg(sb.toString());
 				}
                 audio.close();

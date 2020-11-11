@@ -24,7 +24,7 @@ import javax.swing.JTextField;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
 
-import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
+import edu.emory.mathcs.jtransforms.fft.FloatFFT_1D;
 
 @SuppressWarnings("serial")
 public class demod extends IUIComponent implements IAudioHandler, IPublishListener, ActionListener, Runnable {
@@ -51,26 +51,24 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 	private Thread output;
 	// demodulation mode & options
 	private int mode;
-	private boolean dofir, doagc;
+	private boolean dofir, dodwn, doagc;
 	// band-pass frequencies
 	private int flo, fhi;
 	// sample processing buffer
-	private int[] sam;
+	private float[] sam;
 	// FIR band-pass filter to select a section of the passband
-	private double[] fir;
+	private float[] fir;
 	private int fof;
-	private double[] wfir;
+	private float[] wfir;
 	// down conversion carrier absolute phase & phase increment
-	private double car;
-	private double phi;
+	private float car;
+	private float phi;
 	// demodulated audio buffer
 	private ByteBuffer bbf;
 	// AGC state and FM demod state
-	private int max, avg, li, lq;
-	// dirty graphics
-	private boolean needpaint = true;
+	private float max, avg, li, lq;
 	// debug stuff
-	private double[] dbg;
+	private float[] dbg;
 	private int dbgIdx;
 
 	public demod(IConfig cfg, IPublish pub, ILogger log,
@@ -82,9 +80,9 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		audio = aud;
 		publish.listen(this);
 		// delay buffers for FIR filters (currently fixed order 20)
-		fir = new double[42];
+		fir = new float[42];
 		// weights for FIR filters
-		wfir = new double[21];
+		wfir = new float[21];
 		// initial settings
 		mode = cfg.getIntConfig(CFG_DEMOD_MODE, MODE_OFF);
 		dofir = cfg.getIntConfig(CFG_DEMOD_FIRE, 0)>0 ? true : false;
@@ -135,6 +133,11 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		item = new JMenuItem("FIR On/Off", KeyEvent.VK_I);
 		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK));
 		item.setActionCommand("demod-fir");
+		item.addActionListener(this);
+		top.add(item);
+		item = new JMenuItem("Downshift On/Of", KeyEvent.VK_S);
+		item.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK));
+		item.setActionCommand("demod-dwn");
 		item.addActionListener(this);
 		top.add(item);
 
@@ -195,6 +198,8 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			doagc = !doagc;
 		else if ("demod-fir".equals(e.getActionCommand()))
 			dofir = !dofir;
+		else if ("demod-dwn".equals(e.getActionCommand()))
+			dodwn = !dodwn;
 		else if ("demod-filter-dlg".equals(e.getActionCommand()))
 			filterDlg();
 		else if ("demod-filter-up".equals(e.getActionCommand()))
@@ -221,14 +226,13 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		}
 		audio = aud;
 		AudioDescriptor ad = audio.getAudioDescriptor();
-		int sbytes = (ad.bits+7)/8;
 		// internal sample buffer
-		sam = new int[ad.blen/sbytes/ad.chns*2];
-		// audio output buffer
+		sam = new float[2*ad.blen/ad.size];
+		// audio output buffer: assumes 16bit, 2chan
 		bbf = ByteBuffer.allocate(sam.length*2);
 		bbf.order(ByteOrder.LITTLE_ENDIAN);
 		// fft debug buffer
-		dbg = new double[sam.length];
+		dbg = new float[sam.length];
 		dbgIdx = 0;
 		// recalculate FIR weights
 		filterMove(0, 0);
@@ -301,7 +305,9 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 	private synchronized void filterMove(int lo, int hi) {
 		lo += flo;
 		hi += fhi;
-		if (lo<hi && lo>0 && hi<audio.getAudioDescriptor().rate/2) {
+		if (lo<hi &&
+			lo>(-audio.getAudioDescriptor().rate/2) &&
+			hi<audio.getAudioDescriptor().rate/2) {
 			flo = lo;
 			fhi = hi;
 			weights();
@@ -321,11 +327,7 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			if (JOptionPane.OK_OPTION==opt) {
 				int l = Integer.parseInt(lo.getText());
 				int h = Integer.parseInt(hi.getText());
-				if (l<h && l>0 && h<audio.getAudioDescriptor().rate/2) {
-					flo = l;
-					fhi = h;
-					filterMove(0, 0);
-				}
+				filterMove(l-flo, h-fhi);
 			}
 		} catch (Exception e) {
 			logger.statusMsg("Invalid frequencies");
@@ -345,40 +347,41 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		// band-pass
 		} else {
 			// normalise frequencies to sample rate
-			int rate = audio.getAudioDescriptor().rate;
-			double nlo = (double)flo/rate;
-			double nhi = (double)fhi/rate;
+			float rate = (float)audio.getAudioDescriptor().rate;
+			float nlo = (float)flo/rate;
+			float nhi = (float)fhi/rate;
 			// filter order == length-1
 			int ord = wfir.length-1;
 			// calculate weights, apply hamming window
 			for (int n=0; n<wfir.length; n++) {
 				if (n==ord/2) {
-					wfir[n]=2*(nhi-nlo);
+					wfir[n]=2f*(nhi-nlo);
 				} else {
-					wfir[n]=
+					wfir[n]= (float)(
 						 (Math.sin(2*Math.PI*nhi*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)))
-						-(Math.sin(2*Math.PI*nlo*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)));
+						-(Math.sin(2*Math.PI*nlo*(double)(n-ord/2))/(Math.PI*(double)(n-ord/2)))
+					);
 				}
-				wfir[n] *= 0.54 - 0.46*Math.cos(2*Math.PI*(double)n/(double)ord);
+				wfir[n] *= (float)(0.54 - 0.46*Math.cos(2*Math.PI*(double)n/(double)ord));
 			}
 			// calculate phase advance per input sample for down conversion carrier at flo
-			phi = 2*Math.PI*nlo;
-			car = 0;
+			phi = (float)(2*Math.PI*nlo);
+			car = 0f;
 		}
 		// clear previous samples (if any)
 		for (int i=0; i<fir.length; i++)
-			fir[i]=0;
+			fir[i]=0f;
 		fof=fir.length-2;
 	}
 
-	// Apply FIR filter to incoming sample stream
-	private int filter(double in[], double out[], double[] buf, double[] w, int o) {
+	// Apply FIR filter weights to a complex sample with a history buffer
+	private int filter(float in[], float out[], float[] buf, float[] w, int o) {
 		// put the current sample at start of delay buffer
 		buf[o]=in[0];
 		buf[o+1]=in[1];
 		// weight and sum output I/Q
-		double oi=0;
-		double oq=0;
+		float oi=0;
+		float oq=0;
 		for (int i=0; i<buf.length; i+=2) {
 			int ti=(o+i)%buf.length;
 			oi = oi+buf[ti]*w[i/2];
@@ -392,49 +395,47 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		return o;
 	}
 
-	public void receive(ByteBuffer buf) {
+	public void receive(float[] buf) {
 		// AM demodulator:
 		//   determine AGC factor while measuring input amplitude and averaging it
 		//   subtract average from each amplitude , scale for AGC and output in mono
 		// FM demodulator (quadrature delay technique):
 		//   determine AGC factor while measuring phase rotation rate (inter sample vector product)
 		//   apply AGC to measured phase rotation rate and output in mono (so far!)
-		max = 1;
+		max = 0;
 		avg = 0;
 		AudioDescriptor ad = audio.getAudioDescriptor();
-		int fmgain = ad.rate / (MODE_NFM==mode ? 5000 : 75000);
+		// magic numbers roughly equal to expected deviation..
+		float fmgain = ad.rate / (MODE_NFM==mode ? 5000f : 75000f);
 		for(int s=0; s<sam.length; s+=2) {
-			sam[s] = buf.getShort();
-			if (ad.chns>1)
-				sam[s+1] = buf.getShort();
-			else
-				sam[s+1] = 0;
+			// local copy, we're gonna mess with it
+			sam[s] = buf[s];
+			sam[s+1] = buf[s+1];
 			// apply selection filter?
 			if (dofir) {
 				// band-pass to select region of interest
-				double[] fs = { (double)sam[s], (double)sam[s+1] };
-				double[] os = { 0, 0 };
+				float[] fs = { sam[s], sam[s+1] };
+				float[] os = { 0, 0 };
 				fof=filter(fs, os, fir, wfir, fof);
-				// calculate immediate values of carrier I/Q from phase, retard carrier (neg freq)
-				double ci = Math.cos(car);
-				double cq = Math.sin(car);
-				car -= phi;
-				if (car < 0)
-					car += 2*Math.PI;
-				// complex multiply to mix carrier and signal: (a+ib).(c+id) = ((ac-bd)+i(ad+bc))
-				fs[0]=(os[0]*ci-os[1]*cq);
-				fs[1]=(os[0]*cq+os[1]*ci);
-				sam[s]=(int)fs[0];
-				sam[s+1]=(int)fs[1];
-				// save for debug display
-				dbg[dbgIdx]=fs[0];
-				dbg[dbgIdx+1]=fs[1];
-				dbgIdx = (dbgIdx+2)%dbg.length;
-			} else {
-				dbg[dbgIdx]=sam[s];
-				dbg[dbgIdx+1]=sam[s+1];
-				dbgIdx = (dbgIdx+2)%dbg.length;
+				sam[s]=os[0];
+				sam[s+1]=os[1];
 			}
+			if (dodwn) {
+				// calculate immediate values of carrier I/Q from phase, retard carrier (neg freq)
+				float ci = (float)Math.cos(car);
+				float cq = (float)Math.sin(car);
+				car -= phi;
+				if (car < 0f)
+					car += (float)(2*Math.PI);
+				// complex multiply to mix carrier and signal: (a+ib).(c+id) = ((ac-bd)+i(ad+bc))
+				float[] fs = { sam[s], sam[s+1] };
+				sam[s]=(fs[0]*ci-fs[1]*cq);
+				sam[s+1]=(fs[0]*cq+fs[1]*ci);
+			}
+			// Save for debug
+			dbg[dbgIdx]=sam[s];
+			dbg[dbgIdx+1]=sam[s+1];
+			dbgIdx = (dbgIdx+2)%dbg.length;
 			// Demodulate
 			// ..Off
 			if (MODE_OFF==mode) {
@@ -446,14 +447,14 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			// ..AM
 			} else if (MODE_AM==mode) {
 				// measure amplitude of sample, update running average
-				sam[s] = (int)Math.sqrt(sam[s]*sam[s]+sam[s+1]*sam[s+1]);
+				sam[s] = (float)Math.sqrt(sam[s]*sam[s]+sam[s+1]*sam[s+1]);
 				avg = ((s/2)*avg+sam[s])/(s/2+1); 
 			// ..FM
 			} else if (MODE_NFM==mode || MODE_WFM==mode) {
 				// https://web.archive.org/web/20140420135454/http://kom.aau.dk/group/05gr506/report/node10.html#SECTION04615000000000000000
 				// https://github.com/demantz/RFAnalyzer/blob/master/app/src/main/java/com/mantz_it/rfanalyzer/Demodulator.java
 				// apply post-demodulation gain depending on ratio of sample rate to modulation deviation
-				int v = ((li*sam[s+1])-(lq*sam[s]))/32768 * fmgain;
+				float v = ((li*sam[s+1])-(lq*sam[s])) * fmgain;
 				li = sam[s];
 				lq = sam[s+1];
 				sam[s] = v;
@@ -465,28 +466,39 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 			max -= avg;
 		}
 		// Write audio buffer, apply AGC if enabled
-		bbf.clear();
-		for (int s=0; s<sam.length; s+=2) {
-			sam[s] = (MODE_AM==mode ? sam[s]-avg : sam[s]) * (doagc ? 8192/max : 1);
-			short v = (short) sam[s];
-			// Left
-			bbf.putShort(v);
-			// right
-			bbf.putShort(v);
+		synchronized(bbf) {
+			bbf.clear();
+			for (int s=0; s<sam.length; s+=2) {
+				sam[s] = (MODE_AM==mode ? sam[s]-avg : sam[s]) * (doagc ? 1.0f/max : 1);
+				short v = (short) (sam[s]*(float)Short.MAX_VALUE);
+				// Left
+				bbf.putShort(v);
+				// right
+				bbf.putShort(v);
+				// kick the output thread
+				bbf.notify();
+			}
 		}
-		needpaint = true;
+		repaint();
 	}
 
 	public void hotKey(char c) {
 	}
 
-	// Output audio pump - blocks in write, may over or underrun input resulting in repeat/skip
-	// of buffers - we'll live with that for now.
+	// Output audio pump in a separate thread, avoids blocking receive()
 	public void run() {
 		while (output!=null) {
 			if (sdl!=null) {
-				byte[] tmp = bbf.array();
-				sdl.write(tmp, 0, tmp.length);
+				int wr=0;
+				synchronized(bbf) {
+					// wait for some data..
+					try { bbf.wait(); } catch(Exception e) {}
+					int pos = bbf.position();
+					if (pos>0)
+						wr=sdl.write(bbf.array(), 0, pos);
+				}
+				if (0==wr)
+					try { Thread.sleep(1); } catch (Exception e) {}
 			} else {
 				try { Thread.sleep(100); } catch (Exception e) {}
 			}
@@ -495,8 +507,8 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 
 	private static final String[] s_mode = { "Off", "Raw", "AM", "nFM", "wFM" };
 	public void paintComponent(Graphics g) {
-		// skip if clean
-		if (!needpaint)
+		// skip if not visible
+		if (!isVisible())
 			return;
 		// render time
 		long stime=System.nanoTime();
@@ -504,60 +516,64 @@ public class demod extends IUIComponent implements IAudioHandler, IPublishListen
 		g.setColor(Color.BLACK);
 		g.fillRect(0, 0, getWidth(), getHeight());
 		g.setColor(Color.GRAY);
-		double scale = (sam.length/2)/getWidth();
+		float scale = (sam.length/2)/getWidth();
 		int ly=getHeight()/4;
 		g.drawLine(0, ly, getWidth(), ly);
-		g.drawString("mode: "+s_mode[mode]+ ", scale: "+scale + ", agc: " + doagc + ", fir: "+dofir + ", filter("+flo+","+fhi+") max: "+max + " avg: " + avg, 2, 12);
+		g.setColor(Color.WHITE);
+		g.drawString("mode: "+s_mode[mode]+ ", scale: "+scale + ", agc: " + doagc + ", fir: "+dofir + ", dwn: "+dodwn + ", filter("+flo+","+fhi+") max: "+max + " avg: " + avg, 2, 12);
 		g.setColor(Color.MAGENTA);
+		float h = (float)(getHeight()/4);
 		for (int x=0; x<getWidth()-1; x++) {
-			int i = (int)((double)x*scale);
-			int y = getHeight()/4 - getMax(sam, i*2, (int)scale)*getHeight()/32768;
+			int i = (int)((float)x*scale);
+			int y = getHeight()/4 - (int)(getAbsMax(sam, i*2, (int)scale, 2)*h);
 			g.drawLine(x, ly, x+1, y);
 			ly = y;
 		}
 		long atime=System.nanoTime();
 		// FFT the debug buffer
-		DoubleFFT_1D fft = new DoubleFFT_1D(dbg.length/2);
+		FloatFFT_1D fft = new FloatFFT_1D(dbg.length/2);
 		fft.complexForward(dbg);
-		double[] psd = new double[dbg.length/2];
-		double max = 0.0;
-		int mo = 0;
+		float[] psd = new float[dbg.length/2];
+		float cf = 2f/(float)(dbg.length/2);
+		cf = cf * cf;
 		for (int n=0; n<dbg.length; n+=2) {
-			psd[n/2] = Math.sqrt(dbg[n]*dbg[n]+dbg[n+1]*dbg[n+1]);
-			if (max<psd[n/2]) {
-				max=psd[n/2];
-				mo = n/2;
-			}
+			// @see fft.java for how this works!
+			psd[n/2] = 10f*(float)Math.log10( (dbg[n]*dbg[n]+dbg[n+1]*dbg[n+1])*cf );
 		}
 		g.setColor(Color.GREEN);
-		double pi = ((double)psd.length/2)/((double)getWidth());
-		double ys = (getHeight()/2)/max;
-		ly = (int)(psd[0]*ys);
+		float pi = (psd.length)/((float)getWidth());
+		int off = getWidth()/2;
+		// map -100dB to getHeight()/2
+		h = (getHeight()/2)/-100.0f;
+		ly = (int)(psd[0]*h);
 		for (int n=1; n<getWidth(); n++) {
-			int i = (int)(pi*(double)n);
-			int y = (int)(getMax(psd,i,(int)pi)*ys);
-			g.drawLine(n-1, getHeight()-1-ly, n, getHeight()-1-y);
+			int i = (int)(pi*(float)n);
+			int y = (int)(getMax(psd,i,(int)pi)*h);
+			int o = (n-1+off)%getWidth();
+			g.drawLine(o, getHeight()/2+ly, o+1, getHeight()/2+y);
 			ly = y;
 		}
 		long etime=System.nanoTime();
 		logger.logMsg("demod render (nsecs) aud/fft: " + (atime-stime) + "/" + (etime-atime));
 	}
 
-	// Find largest magnitude value in a array from offset o, length l
-	private int getMax(int[] a, int o, int l) {
-		int r = 0;
-		for (int i=o; i<o+l; i+=2) { // special step by two because this is demodulated IQ samples..
-			if (Math.abs(a[i])>r)
+	private float getMax(float[] a, int o, int l) {
+		float r = a[o];
+		for (int i=o+1; i<o+l; i++) {
+			if (a[i]>r)
 				r=a[i];
 		}
 		return r;
 	}
-	private double getMax(double[] a, int o, int l) {
-		double m = 0;
-		for (int i=o; i<o+l; i++) {
-			if (m<a[i])
-				m=a[i];
+	// Find largest magnitude value in a array from offset o, length l, step s
+	private float getAbsMax(float[] a, int o, int l, int s) {
+		float r = a[o];
+		float c = Math.abs(r);
+		for (int i=o+1; i<o+l; i+=s) {
+			if (Math.abs(a[i])>c)
+				r=a[i];
+				c=Math.abs(r);
 		}
-		return m;
+		return r;
 	}
 }

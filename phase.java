@@ -12,9 +12,7 @@ public class phase extends IUIComponent implements IAudioHandler, IPublishListen
 	private ILogger logger;
 	private IUIHost host;
 	private IAudio audio;
-	private int[] dpy;
-	private int max=1;
-	private boolean needpaint = true;
+	private float[] dpy;
 
 	public phase(IConfig cfg, IPublish pub, ILogger log,
 		IUIHost hst, IAudio aud) {
@@ -22,8 +20,8 @@ public class phase extends IUIComponent implements IAudioHandler, IPublishListen
 		host = hst;
 		audio = aud;
 		AudioDescriptor ad = audio.getAudioDescriptor();
-		int sbytes = (ad.bits+7)/8;
-		dpy = new int[ad.blen/sbytes/ad.chns*2];
+		dpy = new float[2*ad.blen/ad.size];
+		logger.logMsg("phase: dpy.length="+dpy.length);
 		audio.addHandler(this);
 		pub.listen(this);
 	}
@@ -33,9 +31,8 @@ public class phase extends IUIComponent implements IAudioHandler, IPublishListen
 		if ("audio-change".equals(key) &&
 		    val instanceof IAudio) {
 			AudioDescriptor ad = ((IAudio)val).getAudioDescriptor();
-			int sbytes = (ad.bits+7)/8;
 			synchronized(this) {
-				dpy = new int[ad.blen/sbytes/ad.chns*2];
+				dpy = new float[2*ad.blen/ad.size];
 				audio = (IAudio)val;
 				audio.remHandler(this);
 				audio.addHandler(this);
@@ -44,8 +41,8 @@ public class phase extends IUIComponent implements IAudioHandler, IPublishListen
 	}
 
 	public synchronized void paintComponent(Graphics g) {
-		// skip if not visible or doesn't need painting
-		if (!isVisible() || !needpaint)
+		// skip if not visible
+		if (!isVisible())
 			return;
 		// time render
 		long stime = System.nanoTime();
@@ -75,14 +72,23 @@ public class phase extends IUIComponent implements IAudioHandler, IPublishListen
 		g.drawString("Q: "+audio.getQCorrection(), 2, getHeight()/2+12);
 		long rtime = System.nanoTime();
 		// Data points from buffer..
-		double step = (double)(bx*2)/(double)dpy.length;
-		double pos = 0.0;
-		double h = (double)(getHeight()/2)/(double)max;
+		float max = -1;
+		for (int s=0; s<dpy.length; s++) {
+			float a = (float)Math.abs(dpy[s]);
+			if (max<a)
+				max = a;
+		}
+		float step = (float)(bx*2)/(float)dpy.length;
+		g.setColor(Color.GRAY);
+		g.drawString("step:"+1f/step, 50, 12);
+		float pos = 0;
+		float hiq = (float)(getHeight()/4)/max;
+		float hph = (float)(size/2)/max;
 		int lpix = 0;
-		int lsti = 0;
-		int lstq = 0;
-		int avgi = 0;
-		int avgq = 0;
+		float lsti = 0;
+		float lstq = 0;
+		float avgi = 0;
+		float avgq = 0;
 		int acnt = 0;
 		for(int s=0; s<dpy.length; s+=2) {
 			avgi += dpy[s];
@@ -93,45 +99,32 @@ public class phase extends IUIComponent implements IAudioHandler, IPublishListen
 			if (pix>lpix) {
 				// use IQ step scaling to sub-sample phase points - reduce drawing time!
 				g.setColor(Color.YELLOW);
-				g.drawRect(bx+size/2+(dpy[s]*size/max), by+size/2-(dpy[s+1]*size/max), 0, 0);
+				g.drawRect(bx+size/2+(int)(dpy[s]*hph), by+size/2-(int)(dpy[s+1]*hph), 0, 0);
 				// We have moved one pixel, draw the I/Q lines
 				avgi = avgi/acnt;
 				avgq = avgq/acnt;
 				g.setColor(Color.RED);
-				g.drawLine(pix, (int)((double)lsti*h)+getHeight()/4, pix, (int)((double)avgi*h)+getHeight()/4);
+				g.drawLine(pix, getHeight()/4-(int)(lsti*hiq), pix, getHeight()/4-(int)(avgi*hiq));
 				g.setColor(Color.BLUE);
-				g.drawLine(pix, (int)((double)lstq*h)+getHeight()*3/4, pix, (int)((double)avgq*h)+getHeight()*3/4);
+				g.drawLine(pix, getHeight()*3/4-(int)(lstq*hiq), pix, getHeight()*3/4-(int)(avgq*hiq));
 				lpix = pix;
 				lsti = avgi;
 				lstq = avgq;
-				acnt = avgi = avgq = 0;
+				acnt = 0;
+				avgi = avgq = 0;
 			}
 		}
 		g.setColor(Color.GREEN);
-		g.drawString("max: "+max,getWidth()-size/2+2,12);
+		g.drawString("max: "+max, bx+size/2, 12);
 		long etime = System.nanoTime();
-		needpaint = false;
 		logger.logMsg("phase render (nsecs): ret/pts: " + (rtime-stime) + "/" + (etime-rtime));
 	}
 
-	public void receive(ByteBuffer buf) {
+	public void receive(float[] buf) {
 		synchronized(this) {
-			// determine maxima of either axis for scaling
-			max=1;
-			AudioDescriptor ad = audio.getAudioDescriptor();
-			for(int s=0; s<dpy.length; s+=2) {
-				dpy[s] = buf.getShort();
-				if (ad.chns>1)
-					dpy[s+1] = buf.getShort();
-				else
-					dpy[s+1] = 0;
-				max = Math.max(max, Math.abs(dpy[s]));
-				max = Math.max(max, Math.abs(dpy[s+1]));
-			}		
-			// double maxima to get a nice graph..
-			max = Math.max(max*2,1);
+			System.arraycopy(buf, 0, dpy, 0, dpy.length);
 		}
-		needpaint = true;
+		repaint();
 	}
 
 	public void hotKey(char c) {
