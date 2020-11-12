@@ -16,14 +16,27 @@ Phil.
 
 Time to clean up my act :)
 
- * Break up jsdr.java, introduce some interfaces for:
+ * _done_: Break up jsdr.java, introduce some interfaces for:
    * Configuration I/O
    * Audio I/O
    * Logging
    * UI setup (menus, hot keys)
- * Introduce dynamic config (menu/dialogs) for audio input.
- * Improve UI design through use of menus + put hotkey list in a help popup
- * Remove unused audio I/O from FCD.java, add other FCD controls.
- * Waterfall display (in recovered space from hotkey list)!
- * Break up FUNcubeBPSKdemod.java, display/debug & actual demod
- * Move auto-tuning into a separate module (cf: Linux decoder)
+ * _done_: Introduce dynamic config (menu/dialogs) for audio input.
+ * _done(ish)_: Improve UI design through use of menus + put hotkey list in a help popup (hotkeys prb, dead)
+ * _plan change_: Remove unused audio I/O from FCD.java, add other FCD controls.
+   * eventually abandoned direct tuning of FCD, now calling out to [fcdctl](https://github.com/phlash/fcdctl)
+ * _done_: Waterfall display (in recovered space from hotkey list)!
+ * _todo_: Break up FUNcubeBPSKdemod.java, display/debug & actual demod
+ * _todo_: Move auto-tuning into a separate module (cf: Linux decoder)
+
+## Other Java SDRs
+
+In the process of poking about for inspiration and performance improvements,
+I came across a couple of other pure Java SDR projects, which are both much
+more mature than this - do please take a look at:
+
+ * [Denny Sheirer's sdrtrunk](https://github.com/DSheirer/sdrtrunk)
+ * [Dennis Mantz's RF Analyzer](https://github.com/demantz/RFAnalyzer) for Android
+
+I am now indebted to these folks for going before me and learning how to
+code for Java such that it's usable for DSP - thanks y'all!
