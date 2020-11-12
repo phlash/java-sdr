@@ -103,9 +103,10 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 	}
 
 	private void saveConfig() {
+		setIntConfig(CFG_TAB, tabs.getSelectedIndex());
 		try {
 			FileOutputStream cfo = new FileOutputStream(m_cfg);
-			setConfig(CFG_VERSION, "2");
+			setConfig(CFG_VERSION, ""+m_ver);
 			config.store(cfo, "(Ashbysoft *) Java SDR");
 			cfo.close();
 		} catch (Exception e) {
@@ -475,17 +476,17 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 		tabs.add("FFT", new fft(this, this, this, this, audio));
 		tabs.add("Demod", new demod(this, this, this, this, audio));
 		tabs.add("Record", new recorder(this, this, this, this, audio));
+		int nfcs = getIntConfig(CFG_FCUBES, 2);
+		for (int fc=0; fc<nfcs; fc++) {
+			String nm = "FUNcube"+fc;
+			tabs.add(nm, new FUNcubeBPSKDemod(fc, this, this, this, this, audio));
+		}
 		tabs.setSelectedIndex(getIntConfig(CFG_TAB, 0));
 
 		// spacer & help menu, after any tab menus
 		menu.add(Box.createHorizontalGlue());
 		menu.add(help);
 /* TODO tabs
-		int nfcs = getIntConfig(CFG_FUNCUBES, 2);
-		for (int fc=0; fc<nfcs; fc++) {
-			String nm = "FUNcube"+fc;
-			tabs.add(nm, new FUNcubeBPSKDemod(nm, this, format, bufsize));
-		}
 		hotkeys.setText(hotkeys.getText()+"</html>"); */
 		// Done - show it!
 		frame.setVisible(true);

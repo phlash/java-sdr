@@ -40,3 +40,7 @@ demod menu
  Ctrl-AltGr-L: widen fir 500Hz
  Ctrl-AltGr-K: narroW fir 500Hz
 
+bpsk menu
+ (no accels - multiple menus)
+ F: BPSK centre Frequency
+ 

@@ -29,9 +29,9 @@ CLASSES= \
 	phase.class \
 	fft.class \
 	recorder.class \
-	demod.class 
-#	FUNcubeBPSKDemod.class \
-#	FECDecoder.class \
+	demod.class \
+	FUNcubeBPSKDemod.class \
+	FECDecoder.class
 
 OUTCLS=$(addprefix $(OUT)/$(PKG)/,$(CLASSES))
 TARGET=jsdr.jar
