@@ -7,7 +7,7 @@ PKG=com/ashbysoft/java_sdr
 # JTransforms now lives in a sane repository, we could switch to Maven for builds...
 JTRANS=https://repo1.maven.org/maven2/edu/emory/mathcs/JTransforms/2.4/JTransforms-2.4.jar
 # FLAC audio file support 'cause 10min IQ WAVs are nearly 500M, but a FLAC is nearer 250M..
-JFLAC=https://repo.spring.io/plugins-release/jflac/jflac/1.3/jflac-1.3.jar
+JFLAC=https://repo1.maven.org/maven2/org/jflac/jflac-codec/1.5.2/jflac-codec-1.5.2.jar
 
 # Our built objects
 CLASSES= \
