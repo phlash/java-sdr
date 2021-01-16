@@ -244,13 +244,13 @@ public class jsdr implements IConfig, IPublish, ILogger, IUIHost, IPublishListen
 			FileInputStream cfi = new FileInputStream(m_cfg);
 			config.load(cfi);
 			cfi.close();
+			// Check config version - dump if not compatible
+			if (getIntConfig(CFG_VERSION, 0) != m_ver) {
+				System.err.println("Config versions differ, using defaults");
+				config.clear();
+			}
 		} catch (Exception e) {
 			System.err.println("Unable to load config, using defaults");
-		}
-		// Check config version - dump if not compatible
-		if (getIntConfig(CFG_VERSION, 0) != m_ver) {
-			System.err.println("Config versions differ, using defaults");
-			config.clear();
 		}
 		// Check for command line config overrides
 		String caud = null;
